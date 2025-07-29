@@ -12,6 +12,18 @@ class MarkdownToQQConverter {
             backgroundColor: '#ADCBFF', 
             color: '#000000e1' 
         };
+        this.CODE_BLOCK_LABEL = {
+            id: 'qq-mind-map-code-block-label',
+            text: 'code-block',
+            backgroundColor: '#F0F0F0',
+            color: '#000000'
+        };
+        this.DIVIDER_LABEL = {
+            id: 'qq-mind-map-divider-label',
+            text: 'divider',
+            backgroundColor: '#E0E0E0',
+            color: '#666666'
+        };
         this.indentManager = new IndentManager();
     }
 
@@ -26,8 +38,43 @@ class MarkdownToQQConverter {
         const stack = []; // { node, indentLevel, isText, headerLevel }
         let inCommentBlock = false;
         let commentContent = [];
+        let inCodeBlock = false;
+        let codeBlockContent = [];
+        let codeBlockLanguage = '';
 
-        for (const line of lines) {
+        for (let i = 0; i < lines.length; i++) {
+            const line = lines[i];
+            
+            // 处理代码块
+            if (inCodeBlock) {
+                if (line.trim() === '```') {
+                    // 代码块结束
+                    inCodeBlock = false;
+                    const parentNode = stack.length > 0 ? stack[stack.length - 1].node : null;
+                    if (parentNode) {
+                        const codeNode = this.createCodeBlockNode(codeBlockContent, codeBlockLanguage);
+                        parentNode.children.attached.push(codeNode);
+                    } else {
+                        // 如果没有父节点，作为顶级节点
+                        forest.push({ type: 5, data: this.createCodeBlockNode(codeBlockContent, codeBlockLanguage) });
+                    }
+                    codeBlockContent = [];
+                    codeBlockLanguage = '';
+                } else {
+                    codeBlockContent.push(line);
+                }
+                continue;
+            }
+
+            // 检查代码块开始
+            const codeBlockMatch = line.trim().match(/^```(\w*)$/);
+            if (codeBlockMatch) {
+                inCodeBlock = true;
+                codeBlockLanguage = codeBlockMatch[1] || '';
+                codeBlockContent = [];
+                continue;
+            }
+
             // 处理注释块
             if (inCommentBlock) {
                 if (line.includes('-->')) {
@@ -88,13 +135,15 @@ class MarkdownToQQConverter {
             // 附加节点
             this.attachNode(newNode, parentNode, forest);
             
-            // 推入栈
-            stack.push({ 
-                node: newNode, 
-                indentLevel: lineInfo.indent, 
-                isText: lineInfo.isText, 
-                headerLevel: lineInfo.headerLevel 
-            });
+            // 推入栈 - 但分割线节点不推入栈，避免干扰层次结构
+            if (trimmedLine !== '---') {
+                stack.push({ 
+                    node: newNode, 
+                    indentLevel: lineInfo.indent, 
+                    isText: lineInfo.isText, 
+                    headerLevel: lineInfo.headerLevel 
+                });
+            }
         }
         
         return forest;
@@ -177,7 +226,11 @@ class MarkdownToQQConverter {
                 children: { attached: [] } 
             };
         } else if (trimmedLine === '---') {
-            return { title: '---', children: { attached: [] } };
+            return { 
+                title: '---', 
+                labels: [this.DIVIDER_LABEL], 
+                children: { attached: [] } 
+            };
         } else if (imageMatch) {
             return { 
                 title: '', 
@@ -199,6 +252,24 @@ class MarkdownToQQConverter {
                 originalIndent: lineInfo.indent // 保存原始缩进信息
             };
         }
+    }
+
+    /**
+     * 创建代码块节点
+     * @param {Array} codeLines - 代码行数组
+     * @param {string} language - 编程语言
+     * @returns {Object} 代码块节点
+     */
+    createCodeBlockNode(codeLines, language) {
+        const codeContent = codeLines.join('\n');
+        const title = language ? `\`\`\`${language}` : '```';
+        
+        return {
+            title: this.createRichTextNode(title),
+            labels: [this.CODE_BLOCK_LABEL],
+            notes: { content: `<pre><code>${codeContent}</code></pre>` },
+            children: { attached: [] }
+        };
     }
 
     /**
@@ -304,4 +375,4 @@ class MarkdownToQQConverter {
 // 导出模块
 if (typeof window !== 'undefined') {
     window.MarkdownToQQConverter = MarkdownToQQConverter;
-} 
+}

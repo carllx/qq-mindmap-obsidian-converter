@@ -581,17 +581,24 @@ class QQToMarkdownConverter {
     /**
      * 转换思维导图节点为Markdown
      * @param {Array} nodes - 思维导图节点数组
+     * @param {number} startHeaderLevel - 起始标题层级 (1-6)
      * @returns {string} Markdown文本
      */
-    convert(nodes, originalMarkdown = null) {
+    convert(nodes, originalMarkdown = null, startHeaderLevel = 1) {
         let markdown = '';
         
         for (const node of nodes) {
             const data = node.data || node;
             const isHeader = data.labels?.some(l => l.text === 'header');
+            const isCodeBlock = data.labels?.some(l => l.text === 'code-block');
+            const isDivider = data.labels?.some(l => l.text === 'divider') || data.title === '---';
             
             if (isHeader) {
-                markdown += this.convertNodeAsHeader(node, 0);
+                markdown += this.convertNodeAsHeader(node, startHeaderLevel - 1);
+            } else if (isCodeBlock) {
+                markdown += this.convertCodeBlock(node);
+            } else if (isDivider) {
+                markdown += this.convertDivider(node);
             } else {
                 markdown += this.convertNode(node, 0, true);
             }
@@ -608,21 +615,16 @@ class QQToMarkdownConverter {
     /**
      * 转换标题节点
      * @param {Object} node - 节点对象
-     * @param {number} depth - 当前深度
+     * @param {number} baseDepth - 基础深度
      * @returns {string} Markdown文本
      */
-    convertNodeAsHeader(node, depth) {
+    convertNodeAsHeader(node, baseDepth) {
         const data = node.data || node;
         let markdown = '';
 
         // 处理演示文稿节点
         if (data.title === this.PRESENTATION_NODE_TITLE && data.notes?.content) {
             return `\n\n<!--\n${this.convertNoteHtmlToPlainText(data.notes.content)}\n-->\n\n`;
-        }
-
-        // 处理分割线
-        if (data.title === '---') {
-            return '\n\n---\n\n';
         }
 
         // 处理图片
@@ -633,7 +635,8 @@ class QQToMarkdownConverter {
         // 处理标题文本
         let titleText = this.convertRichTextToMarkdown(data.title).trim();
         if (titleText) {
-            markdown += `${'#'.repeat(depth + 1)} ${titleText}\n`;
+            const headerLevel = Math.min(baseDepth + 1, 6); // 限制最大为H6
+            markdown += `${'#'.repeat(headerLevel)} ${titleText}\n`;
         }
 
         // 处理子节点
@@ -641,9 +644,15 @@ class QQToMarkdownConverter {
             for (const child of data.children.attached) {
                 const childData = child.data || child;
                 const isChildHeader = childData.labels?.some(l => l.text === 'header');
+                const isChildCodeBlock = childData.labels?.some(l => l.text === 'code-block');
+                const isChildDivider = childData.labels?.some(l => l.text === 'divider') || childData.title === '---';
                 
                 if (isChildHeader) {
-                    markdown += this.convertNodeAsHeader(child, depth + 1);
+                    markdown += this.convertNodeAsHeader(child, baseDepth + 1);
+                } else if (isChildCodeBlock) {
+                    markdown += this.convertCodeBlock(child);
+                } else if (isChildDivider) {
+                    markdown += this.convertDivider(child);
                 } else {
                     markdown += this.convertNode(child, 0, false);
                 }
@@ -667,11 +676,6 @@ class QQToMarkdownConverter {
         // 处理演示文稿节点
         if (data.title === this.PRESENTATION_NODE_TITLE && data.notes?.content) {
             return `\n\n<!--\n${this.convertNoteHtmlToPlainText(data.notes.content)}\n-->\n\n`;
-        }
-
-        // 处理分割线
-        if (data.title === '---') {
-            return '\n\n---\n\n';
         }
 
         let titleText = this.convertRichTextToMarkdown(data.title).trim();
@@ -705,9 +709,15 @@ class QQToMarkdownConverter {
         if (data.children?.attached) {
             for (const child of data.children.attached) {
                 const isChildHeader = (child.data || child).labels?.some(l => l.text === 'header');
+                const isChildCodeBlock = (child.data || child).labels?.some(l => l.text === 'code-block');
+                const isChildDivider = (child.data || child).labels?.some(l => l.text === 'divider') || (child.data || child).title === '---';
                 
                 if (isChildHeader) {
                     markdown += this.convertNodeAsHeader(child, 0);
+                } else if (isChildCodeBlock) {
+                    markdown += this.convertCodeBlock(child);
+                } else if (isChildDivider) {
+                    markdown += this.convertDivider(child);
                 } else {
                     markdown += this.convertNode(child, indent + 1, true);
                 }
@@ -715,6 +725,52 @@ class QQToMarkdownConverter {
         }
 
         return markdown;
+    }
+
+    /**
+     * 转换代码块节点
+     * @param {Object} node - 代码块节点
+     * @returns {string} Markdown文本
+     */
+    convertCodeBlock(node) {
+        const data = node.data || node;
+        let markdown = '';
+
+        // 获取代码块标题（语言标识）
+        const titleText = this.convertRichTextToMarkdown(data.title).trim();
+        const language = titleText.replace(/^```/, '').trim();
+        
+        // 获取代码内容
+        let codeContent = '';
+        if (data.notes?.content) {
+            // 从HTML注释中提取代码内容
+            const htmlContent = data.notes.content;
+            const codeMatch = htmlContent.match(/<pre><code>([\s\S]*?)<\/code><\/pre>/);
+            if (codeMatch) {
+                codeContent = codeMatch[1];
+            } else {
+                // 如果没有找到pre/code标签，直接使用HTML内容
+                codeContent = this.convertNoteHtmlToPlainText(htmlContent);
+            }
+        }
+
+        // 生成Markdown代码块
+        if (language) {
+            markdown += `\n\`\`\`${language}\n${codeContent}\n\`\`\`\n\n`;
+        } else {
+            markdown += `\n\`\`\`\n${codeContent}\n\`\`\`\n\n`;
+        }
+
+        return markdown;
+    }
+
+    /**
+     * 转换分割线节点
+     * @param {Object} node - 分割线节点
+     * @returns {string} Markdown文本
+     */
+    convertDivider(node) {
+        return '\n\n---\n\n';
     }
 
     /**
@@ -791,6 +847,18 @@ class MarkdownToQQConverter {
             backgroundColor: '#ADCBFF', 
             color: '#000000e1' 
         };
+        this.CODE_BLOCK_LABEL = {
+            id: 'qq-mind-map-code-block-label',
+            text: 'code-block',
+            backgroundColor: '#F0F0F0',
+            color: '#000000'
+        };
+        this.DIVIDER_LABEL = {
+            id: 'qq-mind-map-divider-label',
+            text: 'divider',
+            backgroundColor: '#E0E0E0',
+            color: '#666666'
+        };
         this.indentManager = new IndentManager();
     }
 
@@ -805,8 +873,43 @@ class MarkdownToQQConverter {
         const stack = []; // { node, indentLevel, isText, headerLevel }
         let inCommentBlock = false;
         let commentContent = [];
+        let inCodeBlock = false;
+        let codeBlockContent = [];
+        let codeBlockLanguage = '';
 
-        for (const line of lines) {
+        for (let i = 0; i < lines.length; i++) {
+            const line = lines[i];
+            
+            // 处理代码块
+            if (inCodeBlock) {
+                if (line.trim() === '```') {
+                    // 代码块结束
+                    inCodeBlock = false;
+                    const parentNode = stack.length > 0 ? stack[stack.length - 1].node : null;
+                    if (parentNode) {
+                        const codeNode = this.createCodeBlockNode(codeBlockContent, codeBlockLanguage);
+                        parentNode.children.attached.push(codeNode);
+                    } else {
+                        // 如果没有父节点，作为顶级节点
+                        forest.push({ type: 5, data: this.createCodeBlockNode(codeBlockContent, codeBlockLanguage) });
+                    }
+                    codeBlockContent = [];
+                    codeBlockLanguage = '';
+                } else {
+                    codeBlockContent.push(line);
+                }
+                continue;
+            }
+
+            // 检查代码块开始
+            const codeBlockMatch = line.trim().match(/^```(\w*)$/);
+            if (codeBlockMatch) {
+                inCodeBlock = true;
+                codeBlockLanguage = codeBlockMatch[1] || '';
+                codeBlockContent = [];
+                continue;
+            }
+
             // 处理注释块
             if (inCommentBlock) {
                 if (line.includes('-->')) {
@@ -867,13 +970,15 @@ class MarkdownToQQConverter {
             // 附加节点
             this.attachNode(newNode, parentNode, forest);
             
-            // 推入栈
-            stack.push({ 
-                node: newNode, 
-                indentLevel: lineInfo.indent, 
-                isText: lineInfo.isText, 
-                headerLevel: lineInfo.headerLevel 
-            });
+            // 推入栈 - 但分割线节点不推入栈，避免干扰层次结构
+            if (trimmedLine !== '---') {
+                stack.push({ 
+                    node: newNode, 
+                    indentLevel: lineInfo.indent, 
+                    isText: lineInfo.isText, 
+                    headerLevel: lineInfo.headerLevel 
+                });
+            }
         }
         
         return forest;
@@ -956,7 +1061,11 @@ class MarkdownToQQConverter {
                 children: { attached: [] } 
             };
         } else if (trimmedLine === '---') {
-            return { title: '---', children: { attached: [] } };
+            return { 
+                title: '---', 
+                labels: [this.DIVIDER_LABEL], 
+                children: { attached: [] } 
+            };
         } else if (imageMatch) {
             return { 
                 title: '', 
@@ -978,6 +1087,24 @@ class MarkdownToQQConverter {
                 originalIndent: lineInfo.indent // 保存原始缩进信息
             };
         }
+    }
+
+    /**
+     * 创建代码块节点
+     * @param {Array} codeLines - 代码行数组
+     * @param {string} language - 编程语言
+     * @returns {Object} 代码块节点
+     */
+    createCodeBlockNode(codeLines, language) {
+        const codeContent = codeLines.join('\n');
+        const title = language ? `\`\`\`${language}` : '```';
+        
+        return {
+            title: this.createRichTextNode(title),
+            labels: [this.CODE_BLOCK_LABEL],
+            notes: { content: `<pre><code>${codeContent}</code></pre>` },
+            children: { attached: [] }
+        };
     }
 
     /**
@@ -1083,7 +1210,8 @@ class MarkdownToQQConverter {
 // 导出模块
 if (typeof window !== 'undefined') {
     window.MarkdownToQQConverter = MarkdownToQQConverter;
-} 
+}
+
         return MarkdownToQQConverter;
     });
 
@@ -1417,7 +1545,7 @@ if (typeof window !== 'undefined') {
             `;
             qqToMdBtn.onclick = () => {
                 console.log('🔘 QQ to MD button clicked');
-                this.converter.convertQQToMD();
+                this.handleQQToMDConversion();
             };
 
             const mdToQqBtn = document.createElement('button');
@@ -1444,6 +1572,186 @@ if (typeof window !== 'undefined') {
             // 添加到页面
             parentElement.appendChild(this.container);
             console.log('✅ UI elements added to page');
+        }
+
+        /**
+         * 处理QQ到MD转换，包含header level选择
+         */
+        async handleQQToMDConversion() {
+            console.log('🔄 Handling QQ to MD conversion with header level selection');
+            
+            // 获取QQ思维导图数据
+            const qqData = await this.converter.getQQMindMapData();
+            if (!qqData || qqData.length === 0) {
+                this.showNotification('未检测到QQ思维导图数据', 'error');
+                return;
+            }
+
+            // 检查是否包含header节点
+            const hasHeaders = this.checkForHeaderNodes(qqData);
+            
+            if (hasHeaders) {
+                this.showHeaderLevelDialog(qqData);
+            } else {
+                // 没有header节点，直接转换
+                this.converter.convertQQToMD();
+            }
+        }
+
+        /**
+         * 检查是否包含header节点
+         * @param {Array} nodes - 节点数组
+         * @returns {boolean} 是否包含header节点
+         */
+        checkForHeaderNodes(nodes) {
+            for (const node of nodes) {
+                const data = node.data || node;
+                if (data.labels?.some(l => l.text === 'header')) {
+                    return true;
+                }
+                if (data.children?.attached) {
+                    if (this.checkForHeaderNodes(data.children.attached)) {
+                        return true;
+                    }
+                }
+            }
+            return false;
+        }
+
+        /**
+         * 显示header level选择对话框
+         * @param {Array} qqData - QQ思维导图数据
+         */
+        showHeaderLevelDialog(qqData) {
+            // 创建模态对话框
+            const modal = document.createElement('div');
+            modal.style.cssText = `
+                position: fixed;
+                top: 0;
+                left: 0;
+                width: 100%;
+                height: 100%;
+                background: rgba(0, 0, 0, 0.5);
+                display: flex;
+                justify-content: center;
+                align-items: center;
+                z-index: 10000;
+            `;
+
+            const dialog = document.createElement('div');
+            dialog.style.cssText = `
+                background: white;
+                padding: 20px;
+                border-radius: 8px;
+                box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+                max-width: 400px;
+                width: 90%;
+            `;
+
+            dialog.innerHTML = `
+                <h3 style="margin: 0 0 15px 0; color: #333;">选择起始标题层级</h3>
+                <p style="margin: 0 0 15px 0; color: #666; font-size: 14px;">
+                    检测到思维导图中包含标题节点。请选择起始的标题层级，这将影响转换后的Markdown结构。
+                </p>
+                <div style="margin-bottom: 15px;">
+                    <label style="display: block; margin-bottom: 8px; color: #333;">
+                        <input type="radio" name="headerLevel" value="1" checked> 
+                        H1 (# 一级标题)
+                    </label>
+                    <label style="display: block; margin-bottom: 8px; color: #333;">
+                        <input type="radio" name="headerLevel" value="2"> 
+                        H2 (## 二级标题)
+                    </label>
+                    <label style="display: block; margin-bottom: 8px; color: #333;">
+                        <input type="radio" name="headerLevel" value="3"> 
+                        H3 (### 三级标题)
+                    </label>
+                    <label style="display: block; margin-bottom: 8px; color: #333;">
+                        <input type="radio" name="headerLevel" value="4"> 
+                        H4 (#### 四级标题)
+                    </label>
+                    <label style="display: block; margin-bottom: 8px; color: #333;">
+                        <input type="radio" name="headerLevel" value="5"> 
+                        H5 (##### 五级标题)
+                    </label>
+                    <label style="display: block; margin-bottom: 8px; color: #333;">
+                        <input type="radio" name="headerLevel" value="6"> 
+                        H6 (###### 六级标题)
+                    </label>
+                </div>
+                <div style="display: flex; gap: 10px; justify-content: flex-end;">
+                    <button id="cancelBtn" style="
+                        padding: 8px 16px;
+                        border: 1px solid #ddd;
+                        background: white;
+                        border-radius: 4px;
+                        cursor: pointer;
+                    ">取消</button>
+                    <button id="confirmBtn" style="
+                        padding: 8px 16px;
+                        border: none;
+                        background: #007bff;
+                        color: white;
+                        border-radius: 4px;
+                        cursor: pointer;
+                    ">确认转换</button>
+                </div>
+            `;
+
+            modal.appendChild(dialog);
+            document.body.appendChild(modal);
+
+            // 添加事件监听器
+            const confirmBtn = dialog.querySelector('#confirmBtn');
+            const cancelBtn = dialog.querySelector('#cancelBtn');
+
+            confirmBtn.addEventListener('click', () => {
+                const selectedLevel = parseInt(dialog.querySelector('input[name="headerLevel"]:checked').value);
+                document.body.removeChild(modal);
+                this.converter.convertQQToMDWithHeaderLevel(selectedLevel);
+            });
+
+            cancelBtn.addEventListener('click', () => {
+                document.body.removeChild(modal);
+            });
+
+            // 点击背景关闭
+            modal.addEventListener('click', (e) => {
+                if (e.target === modal) {
+                    document.body.removeChild(modal);
+                }
+            });
+        }
+
+        /**
+         * 显示通知
+         * @param {string} message - 消息内容
+         * @param {string} type - 消息类型 ('success', 'error', 'info')
+         */
+        showNotification(message, type = 'info') {
+            // 简单的通知实现
+            const notification = document.createElement('div');
+            notification.style.cssText = `
+                position: fixed;
+                top: 20px;
+                right: 20px;
+                padding: 12px 20px;
+                border-radius: 4px;
+                color: white;
+                font-size: 14px;
+                z-index: 10001;
+                ${type === 'error' ? 'background: #dc3545;' : 
+                  type === 'success' ? 'background: #28a745;' : 
+                  'background: #17a2b8;'}
+            `;
+            notification.textContent = message;
+            document.body.appendChild(notification);
+            
+            setTimeout(() => {
+                if (document.body.contains(notification)) {
+                    document.body.removeChild(notification);
+                }
+            }, 3000);
         }
 
         setLoadingState(isLoading) {
@@ -1515,6 +1823,54 @@ if (typeof window !== 'undefined') {
                 this.notifications.error('No QQ mind map data found in clipboard');
             } catch (err) {
                 console.error('❌ QQ to MD conversion failed:', err);
+                this.notifications.error('Conversion failed: ' + err.message);
+            } finally {
+                this.interfaceManager.setLoadingState(false);
+            }
+        }
+
+        /**
+         * 获取QQ思维导图数据
+         * @returns {Array|null} 思维导图数据或null
+         */
+        async getQQMindMapData() {
+            try {
+                const clipboardItems = await navigator.clipboard.read();
+                for (const item of clipboardItems) {
+                    if (item.types.includes('text/html')) {
+                        const blob = await item.getType('text/html');
+                        const html = await blob.text();
+                        return this.qqParser.extractMindMapData(html);
+                    }
+                }
+                return null;
+            } catch (err) {
+                console.error('❌ Failed to get QQ mind map data:', err);
+                return null;
+            }
+        }
+
+        /**
+         * 带header level的QQ到MD转换
+         * @param {number} startHeaderLevel - 起始标题层级 (1-6)
+         */
+        async convertQQToMDWithHeaderLevel(startHeaderLevel = 1) {
+            console.log('🔄 QQ to MD conversion with header level started:', startHeaderLevel);
+            try {
+                this.interfaceManager.setLoadingState(true);
+                this.notifications.show(`QQ to MD conversion started (H${startHeaderLevel})`, 'info');
+
+                const mindMapData = await this.getQQMindMapData();
+                if (!mindMapData) {
+                    this.notifications.error('No QQ mind map data found in clipboard');
+                    return;
+                }
+
+                const markdown = this.qqToMdConverter.convert(mindMapData, null, startHeaderLevel);
+                GM_setClipboard(markdown);
+                this.notifications.success(`QQ to MD conversion completed! (Starting from H${startHeaderLevel})`);
+            } catch (err) {
+                console.error('❌ QQ to MD conversion with header level failed:', err);
                 this.notifications.error('Conversion failed: ' + err.message);
             } finally {
                 this.interfaceManager.setLoadingState(false);

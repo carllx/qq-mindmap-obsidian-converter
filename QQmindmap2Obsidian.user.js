@@ -905,7 +905,24 @@ class MarkdownToQQConverter {
                 if (line.trim() === '```') {
                     // 代码块结束
                     inCodeBlock = false;
-                    const parentNode = stack.length > 0 ? stack[stack.length - 1].node : null;
+                    
+                    // 修复：代码块应该添加到最近的标题节点，而不是栈顶节点
+                    let parentNode = null;
+                    
+                    // 从栈顶开始查找最近的标题节点
+                    for (let i = stack.length - 1; i >= 0; i--) {
+                        const stackItem = stack[i];
+                        if (stackItem.headerLevel > 0) {
+                            parentNode = stackItem.node;
+                            break;
+                        }
+                    }
+                    
+                    // 如果没有找到标题节点，使用栈顶节点
+                    if (!parentNode && stack.length > 0) {
+                        parentNode = stack[stack.length - 1].node;
+                    }
+                    
                     if (parentNode) {
                         const codeNode = this.createCodeBlockNode(codeBlockContent, codeBlockLanguage);
                         parentNode.children.attached.push(codeNode);
@@ -916,6 +933,7 @@ class MarkdownToQQConverter {
                     codeBlockContent = [];
                     codeBlockLanguage = '';
                 } else {
+                    // 修复：保留原始行内容，包括撇号等特殊字符
                     codeBlockContent.push(line);
                 }
                 continue;
@@ -1057,6 +1075,12 @@ class MarkdownToQQConverter {
                 if (lineInfo.isList && top.isText && lineInfo.indent === top.indentLevel) {
                     break; // 父节点找到：文本后的列表项
                 }
+                // 修复：同级文本应该作为同级节点，而不是父子关系
+                if (lineInfo.indent === top.indentLevel && lineInfo.isText && top.isText) {
+                    // 同级文本，弹出当前父节点，寻找更上层的父节点
+                    stack.pop();
+                    continue;
+                }
                 // 如果当前行缩进小于等于父节点，且不是标题，则弹出父节点
                 if (lineInfo.indent <= top.indentLevel && top.headerLevel === 0) {
                     stack.pop();
@@ -1097,10 +1121,10 @@ class MarkdownToQQConverter {
                 title: '', 
                 images: [{ 
                     id: '', 
-                    w: 200, 
-                    h: 200, 
-                    ow: 200, 
-                    oh: 200, 
+                    w: 80, // 设置合适的宽度作为缩略图
+                    h: 80, // 设置合适的高度作为缩略图
+                    ow: 80, // 原始宽度
+                    oh: 80, // 原始高度
                     url: imageUrl
                 }], 
                 notes: { 
@@ -1125,15 +1149,30 @@ class MarkdownToQQConverter {
      * @returns {Object} 代码块节点
      */
     createCodeBlockNode(codeLines, language) {
+        // 修复：确保代码内容完整保留，包括特殊字符
         const codeContent = codeLines.join('\n');
         const title = language ? `\`\`\`${language}` : '```';
         
         return {
             title: this.createRichTextNode(title),
             labels: [this.CODE_BLOCK_LABEL],
-            notes: { content: `<pre><code>${codeContent}</code></pre>` },
+            notes: { content: `<pre><code>${this.escapeHtml(codeContent)}</code></pre>` },
             children: { attached: [] }
         };
+    }
+
+    /**
+     * 转义HTML特殊字符
+     * @param {string} text - 需要转义的文本
+     * @returns {string} 转义后的文本
+     */
+    escapeHtml(text) {
+        return text
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
     }
 
     /**

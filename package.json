@@ -1,0 +1,40 @@
+{
+  "name": "qqmindmap2obsidian",
+  "version": "2.0.0",
+  "description": "Converts QQ Mind Map to Obsidian Markdown and vice-versa",
+  "main": "QQmindmap2Obsidian.user.js",
+  "scripts": {
+    "test": "node test/runTests.js",
+    "test:basic": "node test/runTests.js --basic-only",
+    "test:perf": "node test/runTests.js --no-performance",
+    "test:verbose": "node test/runTests.js --verbose",
+    "test:help": "node test/runTests.js --help"
+  },
+  "keywords": [
+    "tampermonkey",
+    "userscript",
+    "markdown",
+    "mindmap",
+    "obsidian",
+    "qq",
+    "converter"
+  ],
+  "author": "carllx & Gemini",
+  "license": "MIT",
+  "devDependencies": {
+    "jsdom": "^24.0.0",
+    "markdown-it": "^14.1.0",
+    "dompurify": "^3.1.5"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/your-username/QQmindmap2Obsidian.git"
+  },
+  "bugs": {
+    "url": "https://github.com/your-username/QQmindmap2Obsidian/issues"
+  },
+  "homepage": "https://github.com/your-username/QQmindmap2Obsidian#readme"
+} 

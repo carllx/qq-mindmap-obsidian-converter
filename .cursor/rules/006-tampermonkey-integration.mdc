@@ -1,0 +1,259 @@
+---
+description: |规范 Tampermonkey 用户脚本集成开发，包括 CDN 依赖管理、浏览器环境适配、模块系统、UI 组件开发、通知系统、安全考虑等关键方面。
+alwaysApply: false
+---
+
+# Tampermonkey 集成
+
+## 🎯 用户脚本特性
+
+### CDN 依赖管理
+- **外部依赖**：通过 `@require` 加载 CDN 资源
+- **版本控制**：指定依赖的精确版本
+- **加载顺序**：确保依赖按正确顺序加载
+- **错误处理**：处理依赖加载失败的情况
+
+### 浏览器环境适配
+```javascript
+// 用户脚本头部配置
+// ==UserScript==
+// @name         QQ Mind Map to Obsidian Converter
+// @namespace    http://tampermonkey.net/
+// @version      2.0.0
+// @description  Converts QQ Mind Map to Obsidian Markdown and vice-versa
+// @author       carllx & Gemini
+// @match        https://docs.qq.com/mind/*
+// @grant        GM_setClipboard
+// @grant        GM_addStyle
+// @grant        GM_setValue
+// @grant        GM_getValue
+// @require      https://cdn.jsdelivr.net/npm/markdown-it@14.1.0/dist/markdown-it.min.js
+// @require      https://cdn.jsdelivr.net/npm/dompurify@3.1.5/dist/purify.min.js
+// ==/UserScript==
+```
+
+## 🔧 模块系统
+
+### 简化的模块定义
+```javascript
+// 立即创建全局对象
+window.QQMindMap2Obsidian = {
+    test: true,
+    version: 'simple',
+    status: 'initializing'
+};
+
+// 简化的模块系统
+const modules = {};
+function define(name, factory) { 
+    try {
+        modules[name] = factory();
+        console.log('✅ Module loaded:', name);
+    } catch (error) {
+        console.error('❌ Error loading module:', name, error);
+    }
+}
+function require(name) { 
+    const module = modules[name];
+    if (!module) {
+        console.error('❌ Module not found:', name);
+    }
+    return module;
+}
+```
+
+### 模块加载策略
+- **延迟加载**：按需加载模块
+- **错误恢复**：处理模块加载失败
+- **依赖解析**：自动解析模块依赖
+- **缓存机制**：避免重复加载
+
+## 🎨 UI 组件开发
+
+### 用户界面原则
+- **非侵入性**：不干扰原有页面功能
+- **响应式设计**：适应不同屏幕尺寸
+- **用户友好**：提供清晰的交互反馈
+- **可访问性**：支持键盘导航和屏幕阅读器
+
+### UI 组件示例
+```javascript
+// 创建用户界面
+function createUI(parentElement) {
+    const container = document.createElement('div');
+    container.className = 'qq-converter-ui';
+    container.innerHTML = `
+        <div class="converter-header">
+            <h3>QQ Mind Map Converter</h3>
+        </div>
+        <div class="converter-controls">
+            <button id="qq-to-md" class="btn btn-primary">QQ → MD</button>
+            <button id="md-to-qq" class="btn btn-secondary">MD → QQ</button>
+        </div>
+        <div class="converter-status" id="status"></div>
+    `;
+    
+    parentElement.appendChild(container);
+    return container;
+}
+```
+
+### 样式管理
+```javascript
+// 添加样式
+function addStyles() {
+    const style = document.createElement('style');
+    style.textContent = `
+        .qq-converter-ui {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: white;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            padding: 16px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            z-index: 10000;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        }
+        
+        .btn {
+            padding: 8px 16px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 4px;
+            font-size: 14px;
+        }
+        
+        .btn-primary {
+            background: #007bff;
+            color: white;
+        }
+        
+        .btn-secondary {
+            background: #6c757d;
+            color: white;
+        }
+    `;
+    document.head.appendChild(style);
+}
+```
+
+## 📋 通知系统
+
+### 用户反馈机制
+```javascript
+// 通知系统
+class NotificationSystem {
+    constructor() {
+        this.defaultDuration = 3000;
+        this.notifications = [];
+    }
+    
+    show(message, type = 'success', duration = this.defaultDuration) {
+        const notification = this.createNotification(message, type);
+        document.body.appendChild(notification);
+        
+        this.animateIn(notification);
+        
+        setTimeout(() => {
+            this.animateOut(notification);
+        }, duration);
+    }
+    
+    success(message, duration = this.defaultDuration) {
+        this.show(message, 'success', duration);
+    }
+    
+    error(message, duration = this.defaultDuration) {
+        this.show(message, 'error', duration);
+    }
+    
+    warning(message, duration = this.defaultDuration) {
+        this.show(message, 'warning', duration);
+    }
+    
+    info(message, duration = this.defaultDuration) {
+        this.show(message, 'info', duration);
+    }
+}
+```
+
+## 🔒 安全考虑
+
+### 内容安全策略
+- **DOMPurify 集成**：清理用户输入和输出
+- **XSS 防护**：防止跨站脚本攻击
+- **数据验证**：验证所有用户输入
+- **安全存储**：安全地存储用户设置
+
+### 权限管理
+```javascript
+// 权限检查
+function checkPermissions() {
+    const requiredGrants = [
+        'GM_setClipboard',
+        'GM_addStyle',
+        'GM_setValue',
+        'GM_getValue'
+    ];
+    
+    const missingGrants = requiredGrants.filter(grant => 
+        typeof window[grant] === 'undefined'
+    );
+    
+    if (missingGrants.length > 0) {
+        console.error('Missing required grants:', missingGrants);
+        return false;
+    }
+    
+    return true;
+}
+```
+
+## 🚀 性能优化
+
+### 资源加载优化
+- **异步加载**：异步加载非关键资源
+- **缓存策略**：实现适当的缓存机制
+- **代码分割**：按需加载功能模块
+- **内存管理**：及时清理不需要的资源
+
+### 错误处理
+```javascript
+// 全局错误处理
+window.addEventListener('error', (event) => {
+    console.error('Global error:', event.error);
+    
+    // 发送错误报告
+    if (window.QQMindMap2Obsidian && window.QQMindMap2Obsidian.notifications) {
+        window.QQMindMap2Obsidian.notifications.error(
+            '发生错误，请检查控制台获取详细信息'
+        );
+    }
+});
+
+// 未处理的 Promise 拒绝
+window.addEventListener('unhandledrejection', (event) => {
+    console.error('Unhandled promise rejection:', event.reason);
+});
+```
+
+## 📚 最佳实践
+
+### 开发流程
+1. **本地测试**：在本地环境测试功能
+2. **浏览器测试**：在目标浏览器中测试
+3. **用户反馈**：收集用户反馈并迭代
+4. **版本管理**：使用语义化版本控制
+
+### 调试技巧
+- **控制台日志**：使用有意义的日志消息
+- **错误边界**：实现错误边界处理
+- **性能监控**：监控脚本性能
+- **用户反馈**：提供用户反馈渠道
+description:
+globs:
+alwaysApply: false
+---

@@ -1,0 +1,224 @@
+# 测试策略
+
+## 🧪 测试架构
+
+### 模块化测试设计
+- **数据复用**：避免重复生成大量占位符
+- **简化设计**：使用 `SimpleTestSuite` 替代复杂的模块系统
+- **Tampermonkey适配**：模拟浏览器环境和CDN依赖
+- **配置驱动**：通过配置文件统一管理测试行为
+
+### 测试分类
+- **基础测试**：核心功能验证
+- **边界测试**：边缘情况和错误处理
+- **错误测试**：格式错误和异常情况
+- **性能测试**：转换速度和资源使用
+
+## 📋 测试用例设计
+
+### 基础测试用例
+```javascript
+// 基础测试用例示例
+const BASE_TEST_DATA = {
+    simpleHeader: {
+        markdown: `# 标题\n\n这是内容`,
+        description: '基础标题结构'
+    },
+    parallelText: {
+        markdown: `# 主标题\n\n第一行正文\n第二行正文`,
+        description: '同级文本节点（问题1）'
+    },
+    codeBlockWithSpecialChars: {
+        markdown: `# 代码块\n\n\`\`\`javascript\nArtist('s )Name\n\`\`\``,
+        description: '代码块特殊字符处理（问题2）'
+    }
+};
+```
+
+### 边界测试用例
+```javascript
+// 边界测试用例示例
+const EDGE_CASES = {
+    emptyContent: {
+        markdown: '',
+        description: '空行处理'
+    },
+    specialCharacters: {
+        markdown: `# 特殊字符\n\n<>&"'`,
+        description: 'HTML特殊字符转义'
+    },
+    nestedStructure: {
+        markdown: `# 标题1\n## 标题2\n### 标题3\n#### 标题4`,
+        description: '深层嵌套结构'
+    }
+};
+```
+
+## 🔍 验证方法
+
+### 内容完整性验证
+- **标题内容**：确保标题内容被保留
+- **代码块内容**：验证代码块内容完整
+- **列表结构**：保持列表层级结构
+- **图片信息**：保留图片的alt和title信息
+
+### 结构完整性验证
+- **标题层级**：确保标题层级正确
+- **节点关系**：验证节点关系准确
+- **缩进结构**：保持缩进结构一致
+- **特殊标签**：正确处理特殊标签
+
+### 双向转换验证
+```javascript
+// 双向转换验证示例
+function validateBidirectionalConversion(original, mdToQQ, qqToMD) {
+    const errors = [];
+    const warnings = [];
+    
+    // 基础验证
+    if (!mdToQQ || !mdToQQ.title) {
+        errors.push('MD→QQ 转换结果无效');
+    }
+    
+    if (!qqToMD || typeof qqToMD !== 'string') {
+        errors.push('QQ→MD 转换结果无效');
+    }
+    
+    // 内容完整性验证
+    if (original.includes('正文') && !qqToMD.includes('正文')) {
+        warnings.push('可能丢失了部分内容');
+    }
+    
+    // 结构验证
+    if (original.includes('```') && !qqToMD.includes('```')) {
+        warnings.push('代码块可能未正确处理');
+    }
+    
+    return { passed: errors.length === 0, errors, warnings };
+}
+```
+
+## 🚀 测试运行
+
+### 命令行选项
+```bash
+# 运行所有测试
+npm test
+
+# 只运行基础测试
+npm run test:basic
+
+# 跳过性能测试
+npm run test:perf
+
+# 详细输出
+npm run test:verbose
+
+# 显示帮助
+npm run test:help
+```
+
+### 测试报告格式
+```json
+{
+  "report": {
+    "passed": 15,
+    "failed": 0,
+    "total": 15,
+    "details": [
+      {
+        "name": "simpleHeader",
+        "type": "basic",
+        "description": "基础标题结构",
+        "passed": true,
+        "errors": [],
+        "warnings": []
+      }
+    ]
+  }
+}
+```
+
+## 📊 性能测试
+
+### 性能基准
+```javascript
+// 性能测试示例
+function testPerformance(converter, testData, iterations) {
+    const startTime = performance.now();
+    
+    for (let i = 0; i < iterations; i++) {
+        converter.convert(testData);
+    }
+    
+    const endTime = performance.now();
+    const totalTime = endTime - startTime;
+    const averageTime = totalTime / iterations;
+    const throughput = (iterations / totalTime) * 1000;
+    
+    return {
+        totalTime,
+        averageTime,
+        iterations,
+        throughput
+    };
+}
+```
+
+### 性能监控
+- **转换速度**：测量转换时间
+- **内存使用**：监控内存消耗
+- **吞吐量**：计算每秒处理次数
+- **资源优化**：识别性能瓶颈
+
+## 🔧 测试工具
+
+### Mock 环境
+```javascript
+// 模拟 Tampermonkey 环境
+const { JSDOM } = require('jsdom');
+const dom = new JSDOM('<!DOCTYPE html><html><body></body></html>');
+global.window = dom.window;
+global.document = dom.window.document;
+global.navigator = dom.window.navigator;
+
+// 模拟 CDN 依赖
+const markdownIt = require('markdown-it');
+const DOMPurify = require('dompurify');
+```
+
+### 测试验证器
+```javascript
+// 测试验证器示例
+class TestValidator {
+    static validateNodeStructure(node, expected) {
+        // 验证节点结构
+    }
+    
+    static validateConversionIntegrity(original, converted) {
+        // 验证转换完整性
+    }
+    
+    static validateBidirectionalConversion(original, mdToQQ, qqToMD) {
+        // 验证双向转换
+    }
+}
+```
+
+## 📚 最佳实践
+
+### 测试编写
+1. **有意义名称**：使用有意义的测试用例名称
+2. **清晰描述**：提供清晰的测试描述
+3. **边界条件**：包含边界条件和错误情况
+4. **代表性数据**：保持测试数据的代表性
+
+### 测试维护
+1. **定期更新**：定期更新测试数据
+2. **及时修复**：及时修复失败的测试
+3. **可读性**：保持测试代码的可读性
+4. **变更记录**：记录重要的测试变更
+description:
+globs:
+alwaysApply: false
+---

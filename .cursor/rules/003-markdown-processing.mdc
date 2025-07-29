@@ -1,0 +1,122 @@
+---
+alwaysApply: false
+description: 
+globs:
+
+---
+
+# Markdown 处理规则
+
+## 🔧 Markdown-it 令牌处理
+
+### 令牌类型理解
+- **内联令牌**：处理文本、链接、强调等内联元素
+- **块级令牌**：处理标题、段落、列表、代码块等块级元素
+- **嵌套内容**：正确处理复杂的嵌套结构
+- **自定义令牌**：考虑特殊内容的自定义令牌类型
+
+### 令牌处理模式
+```javascript
+// 处理内联令牌
+function processInlineTokens(tokens) {
+    return tokens.map(token => {
+        switch (token.type) {
+            case 'text': return processTextToken(token);
+            case 'link_open': return processLinkToken(token);
+            case 'strong_open': return processStrongToken(token);
+            // ... 其他令牌类型
+        }
+    });
+}
+
+// 处理块级令牌
+function processBlockTokens(tokens) {
+    return tokens.map(token => {
+        switch (token.type) {
+            case 'heading_open': return processHeadingToken(token);
+            case 'code_block': return processCodeBlockToken(token);
+            case 'list_item_open': return processListItemToken(token);
+            // ... 其他令牌类型
+        }
+    });
+}
+```
+
+## 📋 转换挑战
+
+### 格式保持
+- 尽可能保持原始格式
+- 处理特殊字符和转义序列
+- 保持列表缩进和层级结构
+- 正确处理代码块的语言标识
+
+### 语义保持
+- 保持含义而不仅仅是语法
+- 正确处理链接和图片的 alt 文本
+- 保持标题层级关系
+- 处理表格结构和对齐
+
+### 边缘情况处理
+- 优雅地处理格式错误或不完整的输入
+- 处理不寻常或复杂的嵌套结构
+- 考虑大文档和复杂结构的性能优化
+
+## 🎯 具体考虑
+
+### 代码块处理
+```javascript
+// 代码块转换示例
+function createCodeBlockNode(codeLines, language) {
+    const codeContent = codeLines.join('\n');
+    const title = language ? `\`\`\`${language}` : '```';
+    
+    return {
+        title: createRichTextNode(title),
+        labels: [CODE_BLOCK_LABEL],
+        notes: { content: `<pre><code>${escapeHtml(codeContent)}</code></pre>` },
+        children: { attached: [] }
+    };
+}
+```
+
+### 富文本处理
+```javascript
+// 富文本转换示例
+function createRichTextNode(markdown) {
+    const tokens = markdownIt.parse(markdown, {});
+    return buildRichTextFromTokens(tokens);
+}
+
+function buildRichTextFromTokens(tokens) {
+    // 构建富文本结构的逻辑
+    // 处理内联格式、链接、图片等
+}
+```
+
+### 特殊字符处理
+```javascript
+// HTML 转义函数
+function escapeHtml(text) {
+    return text
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+```
+
+## 📚 学习资源
+
+### Markdown-it 资源
+- **官方文档**：使用 MCP Context7 访问 markdown-it 文档
+- **插件生态系统**：探索现有插件以获取灵感
+- **令牌处理**：深入了解 markdown-it 的令牌系统
+- **最佳实践**：遵循已建立的 markdown 处理模式
+
+### 性能优化
+- 缓存解析结果以避免重复处理
+- 使用流式处理处理大文档
+- 优化令牌遍历算法
+- 考虑内存使用和垃圾回收
+

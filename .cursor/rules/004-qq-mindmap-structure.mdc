@@ -1,0 +1,166 @@
+---
+description: 定义 QQ 思维导图数据结构处理规范，包括节点层次结构、富文本处理、注释字段管理等核心概念。涵盖节点转换模式、特殊内容处理、数据完整性验证等关键功能。
+alwaysApply: false
+---
+
+# QQ 思维导图结构
+
+## 🏗️ 数据结构理解
+
+### 节点层次结构
+- **父子关系**：理解节点间的层级关系
+- **同级节点**：正确处理相同层级的节点
+- **节点类型**：区分标题、文本、代码块、图片等不同类型
+- **节点属性**：处理节点的各种属性和元数据
+
+### 富文本处理
+- **格式化文本**：处理带有样式和链接的文本
+- **内联格式**：处理粗体、斜体、下划线等格式
+- **链接处理**：正确处理内部和外部链接
+- **图片数据**：处理图片的尺寸、alt文本和标题
+
+### 注释字段
+- **元数据保存**：在 notes 字段中保存额外信息
+- **代码块内容**：将代码块内容存储在 notes 中
+- **图片信息**：保存图片的完整信息
+- **自定义数据**：支持项目特定的元数据
+
+## 📋 转换模式
+
+### 节点转换示例
+```javascript
+// QQ 节点到 Markdown 转换
+function convertNode(node, indent, isListItem) {
+    let result = '';
+    
+    if (node.title && node.title.text) {
+        const text = convertRichTextToMarkdown(node.title);
+        result += `${indent}${text}\n`;
+    }
+    
+    if (node.children && node.children.attached) {
+        for (const child of node.children.attached) {
+            result += convertNode(child, indent + '  ', false);
+        }
+    }
+    
+    return result;
+}
+```
+
+### 富文本转换
+```javascript
+// 富文本到 Markdown 转换
+function convertRichTextToMarkdown(titleObject) {
+    if (typeof titleObject === 'string') {
+        return titleObject;
+    }
+    
+    let result = '';
+    if (titleObject.styles) {
+        for (const style of titleObject.styles) {
+            switch (style.type) {
+                case 'bold': result += `**${style.text}**`; break;
+                case 'italic': result += `*${style.text}*`; break;
+                case 'link': result += `[${style.text}](${style.url})`; break;
+                default: result += style.text;
+            }
+        }
+    }
+    
+    return result || titleObject.text || '';
+}
+```
+
+## 🎯 特殊内容处理
+
+### 代码块处理
+```javascript
+// 代码块转换
+function convertCodeBlock(node) {
+    const notesContent = node.notes?.content;
+    if (!notesContent) return '';
+    
+    // 从 notes 中提取代码内容
+    const codeMatch = notesContent.match(/<pre><code>(.*?)<\/code><\/pre>/s);
+    if (codeMatch) {
+        const codeContent = unescapeHtml(codeMatch[1]);
+        const language = extractLanguageFromTitle(node.title);
+        return `\`\`\`${language}\n${codeContent}\n\`\`\`\n`;
+    }
+    
+    return '';
+}
+```
+
+### 图片处理
+```javascript
+// 图片转换
+function convertImage(node) {
+    const notesContent = node.notes?.content;
+    if (!notesContent) return '';
+    
+    // 从 notes 中提取图片信息
+    const imgMatch = notesContent.match(/<img[^>]+src="([^"]+)"[^>]*>/);
+    if (imgMatch) {
+        const src = imgMatch[1];
+        const alt = extractAltText(notesContent);
+        const title = extractTitle(notesContent);
+        
+        let result = `![${alt}](${src})`;
+        if (title) result += ` "${title}"`;
+        return result + '\n';
+    }
+    
+    return '';
+}
+```
+
+### 分割线处理
+```javascript
+// 分割线转换
+function convertDivider(node) {
+    if (node.labels && node.labels.includes('divider')) {
+        return '---\n';
+    }
+    return '';
+}
+```
+
+## 🔍 数据完整性
+
+### 双向转换验证
+- 确保 MD→QQ→MD 转换保持数据完整性
+- 验证所有重要信息都被保留
+- 检查格式和结构的正确性
+- 处理转换过程中的数据丢失
+
+### 边缘情况处理
+- 处理空节点和无效数据
+- 处理复杂的嵌套结构
+- 处理不完整或损坏的数据
+- 优雅地处理未知的节点类型
+
+### 性能优化
+- 优化大文档的处理速度
+- 减少内存使用和垃圾回收
+- 使用高效的算法进行节点遍历
+- 考虑缓存和预计算
+
+## 📚 最佳实践
+
+### 节点遍历
+- 使用深度优先遍历处理节点树
+- 正确处理节点的层级关系
+- 避免无限递归和循环引用
+- 优化遍历算法的性能
+
+### 错误处理
+- 提供有意义的错误消息
+- 优雅地处理格式错误
+- 记录转换过程中的问题
+- 支持部分转换和错误恢复
+description:
+globs:
+alwaysApply: false
+---

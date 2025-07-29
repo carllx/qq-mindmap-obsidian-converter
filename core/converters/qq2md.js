@@ -60,7 +60,17 @@ class QQToMarkdownConverter {
 
         // 处理图片
         if (data.images) {
-            markdown += data.images.map(img => `![image](${img.url})\n`).join('');
+            markdown += data.images.map(img => {
+                // 尝试从notes中恢复alt信息
+                let altText = 'image';
+                if (data.notes?.content) {
+                    const altMatch = data.notes.content.match(/<p>Image Alt: (.*?)<\/p>/);
+                    if (altMatch) {
+                        altText = altMatch[1];
+                    }
+                }
+                return `![${altText}](${img.url})\n`;
+            }).join('');
         }
 
         // 处理标题文本
@@ -115,7 +125,17 @@ class QQToMarkdownConverter {
 
         // 处理图片
         if (data.images) {
-            markdown += data.images.map(img => `${indentStr}![image](${img.url})\n`).join('');
+            markdown += data.images.map(img => {
+                // 尝试从notes中恢复alt信息
+                let altText = 'image';
+                if (data.notes?.content) {
+                    const altMatch = data.notes.content.match(/<p>Image Alt: (.*?)<\/p>/);
+                    if (altMatch) {
+                        altText = altMatch[1];
+                    }
+                }
+                return `${indentStr}![${altText}](${img.url})\n`;
+            }).join('');
         }
 
         // 处理文本内容

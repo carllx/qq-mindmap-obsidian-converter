@@ -150,9 +150,9 @@ class MarkdownToQQConverter {
     }
 
     /**
-     * 解析行信息
-     * @param {string} line - 原始行内容
-     * @returns {Object} 行信息对象
+     * 解析行内容
+     * @param {string} line - 原始行
+     * @returns {Object} 解析结果
      */
     parseLine(line) {
         // 使用标准化的缩进管理器
@@ -164,6 +164,9 @@ class MarkdownToQQConverter {
         const isList = indentInfo.isList;
         const isText = !isList && !currentHeaderLevel;
 
+        // 改进图片匹配，提取alt信息
+        const imageMatch = indentInfo.content.match(/^!\[(.*?)\]\((.*?)\)$/);
+
         return {
             trimmedLine: indentInfo.content,
             indent: indentInfo.level,
@@ -171,7 +174,7 @@ class MarkdownToQQConverter {
             isList,
             isText,
             headerMatch,
-            imageMatch: indentInfo.content.match(/^!\[.*?\]\((.*?)\)$/)
+            imageMatch
         };
     }
 
@@ -232,6 +235,9 @@ class MarkdownToQQConverter {
                 children: { attached: [] } 
             };
         } else if (imageMatch) {
+            const altText = imageMatch[1] || 'image';
+            const imageUrl = imageMatch[2];
+            
             return { 
                 title: '', 
                 images: [{ 
@@ -240,8 +246,11 @@ class MarkdownToQQConverter {
                     h: 200, 
                     ow: 200, 
                     oh: 200, 
-                    url: imageMatch[1] 
+                    url: imageUrl
                 }], 
+                notes: { 
+                    content: `<p>Image Alt: ${altText}</p>` 
+                },
                 children: { attached: [] } 
             };
         } else {

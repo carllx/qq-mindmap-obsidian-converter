@@ -14,6 +14,15 @@ function buildUserScript() {
     
     let template = fs.readFileSync(templatePath, 'utf8');
     
+    // Inject the 'he' library
+    const heLibraryPath = 'lib/he.min.js';
+    if (fs.existsSync(heLibraryPath)) {
+        const heCode = fs.readFileSync(heLibraryPath, 'utf8');
+        template = template.replace('// {{HE_LIBRARY}}', heCode);
+    } else {
+        console.error('❌ `he` library not found at:', heLibraryPath);
+    }
+    
     // 2. 读取模块文件
     const modules = [
         { name: 'IndentManager', file: 'core/utils/indentManager.js' },
@@ -37,6 +46,11 @@ function buildUserScript() {
         const className = extractClassName(content);
         moduleCode += `    define('${module.name}', function() {\n        ${content}\n        return ${className};\n    });\n\n`;
     }
+    
+    // 添加全局变量定义
+    moduleCode += `    // 创建全局变量以便其他模块使用\n`;
+    moduleCode += `    const IndentManager = modules.IndentManager;\n`;
+    moduleCode += `    const LinePreserver = modules.LinePreserver;\n\n`;
     
     // 4. 替换模板中的占位符
     template = template.replace('{{MODULES}}', moduleCode);

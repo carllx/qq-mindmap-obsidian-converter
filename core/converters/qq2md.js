@@ -270,9 +270,28 @@ class QQToMarkdownConverter {
      * @returns {string} 纯文本内容
      */
     convertNoteHtmlToPlainText(html) {
-        const doc = new DOMParser().parseFromString(html, 'text/html');
-        doc.querySelectorAll('br').forEach(br => br.replaceWith('\n'));
-        return doc.body.textContent || '';
+        // 修复：确保DOMParser在浏览器环境中正确初始化
+        const DOMParser = window.DOMParser || (() => {
+            // 如果DOMParser不可用，使用简单的文本处理
+            return {
+                parseFromString: (html, type) => {
+                    return {
+                        querySelectorAll: () => [],
+                        body: { textContent: html.replace(/<[^>]*>/g, '') }
+                    };
+                }
+            };
+        })();
+        
+        try {
+            const doc = new DOMParser().parseFromString(html, 'text/html');
+            doc.querySelectorAll('br').forEach(br => br.replaceWith('\n'));
+            return doc.body.textContent || '';
+        } catch (error) {
+            console.warn('DOMParser failed, using fallback:', error);
+            // 回退到简单的HTML标签移除
+            return html.replace(/<[^>]*>/g, '').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'");
+        }
     }
 }
 

@@ -2,18 +2,21 @@
 // @name         QQ Mind Map to Obsidian Converter (Simple)
 // @namespace    http://tampermonkey.net/
 // @version      2.0.0
-// @description  Converts QQ Mind Map to Obsidian Markdown and vice-versa
-// @author       carllx & Gemini
-// @match        https://docs.qq.com/mind/*
+// @description  Bidirectional conversion between QQ Mind Map and Obsidian Markdown
+// @author       Your Name
+// @match        *://naotu.qq.com/mindcal/*
+// @match        *://docs.qq.com/mind/*
 // @grant        GM_setClipboard
-// @grant        GM_addStyle
-// @grant        GM_setValue
+// @grant        GM_notification
+// @grant        GM_xmlhttpRequest
 // @grant        GM_getValue
 // @require      https://cdn.jsdelivr.net/npm/markdown-it@14.1.0/dist/markdown-it.min.js
-// @require      https://cdn.jsdelivr.net/npm/dompurify@3.1.5/dist/purify.min.js
+// @require      https://cdnjs.cloudflare.com/ajax/libs/dompurify/2.3.8/purify.min.js
 // ==/UserScript==
 
-(function() {
+// {{HE_LIBRARY}}
+
+(function (markdownit, DOMPurify, he) {
     'use strict';
 
     console.log('🚀 QQ Mind Map Converter (Simple) starting...');
@@ -28,6 +31,7 @@
 
     // 简化的模块系统
     const modules = {};
+    
     function define(name, factory) { 
         try {
             modules[name] = factory();
@@ -36,6 +40,7 @@
             console.error('❌ Error loading module:', name, error);
         }
     }
+    
     function require(name) { 
         const module = modules[name];
         if (!module) {
@@ -60,7 +65,13 @@
 
         waitForUIAndInject() {
             console.log('🔍 Looking for target element...');
+            let attempts = 0;
+            const maxAttempts = 10; // 最多尝试10次
+            
             const interval = setInterval(() => {
+                attempts++;
+                console.log(`🔍 Attempt ${attempts}/${maxAttempts} - Looking for target element...`);
+                
                 // 尝试多个可能的选择器
                 const selectors = [
                     '#editor-root > div > div > div.Footer_footer__DdscW',
@@ -82,6 +93,12 @@
                     clearInterval(interval);
                     this.createUI(targetElement);
                     console.log('✅ UI created successfully');
+                } else if (attempts >= maxAttempts) {
+                    // 超时后使用 body 作为后备
+                    clearInterval(interval);
+                    console.log('⚠️ Timeout reached, using document.body as fallback');
+                    this.createUI(document.body);
+                    console.log('✅ UI created with fallback');
                 } else {
                     console.log('⏳ Target element not found, retrying...');
                 }
@@ -182,10 +199,10 @@
         checkForHeaderNodes(nodes) {
             for (const node of nodes) {
                 const data = node.data || node;
-                if (data.labels?.some(l => l.text === 'header')) {
+                if (data.labels && data.labels.some(l => l.text === 'header')) {
                     return true;
                 }
-                if (data.children?.attached) {
+                if (data.children && data.children.attached) {
                     if (this.checkForHeaderNodes(data.children.attached)) {
                         return true;
                     }
@@ -345,11 +362,11 @@
 
         setupMarkdownIt() {
             console.log('🔧 Setting up markdown-it...');
-            if (typeof window.markdownit === 'undefined') {
+            if (typeof markdownit === 'undefined') {
                 console.error('❌ markdown-it not available');
                 return;
             }
-            this.md = window.markdownit({
+            this.md = markdownit({
                 html: false,
                 linkify: true,
             }).enable('strikethrough');
@@ -359,17 +376,17 @@
         initializeComponents() {
             console.log('🔧 Initializing components...');
             try {
-                // 使用 require 获取模块
-                const NotificationSystem = require('NotificationSystem');
-                const QQMindMapParser = require('QQMindMapParser');
-                const QQToMarkdownConverter = require('QQToMarkdownConverter');
-                const MarkdownToQQConverter = require('MarkdownToQQConverter');
+                // Get modules directly from the closure scope
+                const NotificationSystem = modules.NotificationSystem;
+                const QQMindMapParser = modules.QQMindMapParser;
+                const QQToMarkdownConverter = modules.QQToMarkdownConverter;
+                const MarkdownToQQConverter = modules.MarkdownToQQConverter;
 
                 this.notifications = new NotificationSystem();
                 this.notifications.addStyles();
                 this.qqParser = new QQMindMapParser();
-                this.qqToMdConverter = new QQToMarkdownConverter();
-                this.mdToQqConverter = new MarkdownToQQConverter(this.md);
+                this.qqToMdConverter = new QQToMarkdownConverter(this.qqParser, DOMPurify);
+                this.mdToQqConverter = new MarkdownToQQConverter(this.md, he); // Pass `he` correctly
                 this.interfaceManager = new SimpleInterfaceManager(this);
                 this.interfaceManager.init();
                 console.log('✅ All components initialized');
@@ -467,12 +484,12 @@
 
                 const mindMapData = this.mdToQqConverter.convert(markdown);
                 // 检查 DOMPurify 是否可用
-                if (typeof window.DOMPurify === 'undefined') {
+                if (typeof DOMPurify === 'undefined') {
                     console.error('❌ DOMPurify not available');
                     this.notifications.error('DOMPurify library not loaded');
                     return;
                 }
-                const html = window.DOMPurify.sanitize('<div data-mind-map=\'' + JSON.stringify(mindMapData) + '\'></div>');
+                const html = DOMPurify.sanitize('<div data-mind-map=\'' + JSON.stringify(mindMapData) + '\'></div>');
                 const plainText = this.qqParser.generatePlainText(mindMapData);
                 
                 const htmlBlob = new Blob([html], { type: 'text/html' });
@@ -498,8 +515,22 @@
     // 主函数
     async function main() {
         try {
-            console.log('🚀 Main function starting...');
+            // 1. 检查核心依赖库是否加载成功
+            if (typeof markdownit === 'undefined' || typeof DOMPurify === 'undefined' || typeof he === 'undefined') {
+                const missing = [
+                    (typeof markdownit === 'undefined' ? 'markdown-it' : null),
+                    (typeof DOMPurify === 'undefined' ? 'DOMPurify' : null),
+                    (typeof he === 'undefined' ? 'he' : null)
+                ].filter(Boolean).join(', ');
+                
+                const errorMsg = `QQmindmap2Obsidian Error: A critical library (${missing}) failed to load. Please check your internet connection, browser console, and script manager's log for errors.`;
+                console.error(errorMsg);
+                alert(errorMsg);
+                return; // 停止执行
+            }
             
+            console.log('QQ Mind Map to Obsidian script started');
+
             // 等待页面加载
             if (document.readyState === 'complete') {
                 console.log('✅ Page already loaded');
@@ -521,10 +552,10 @@
             // 创建全局对象
             const globalObject = {
                 converter,
-                QQMindMapParser: require('QQMindMapParser'),
-                QQToMarkdownConverter: require('QQToMarkdownConverter'),
-                MarkdownToQQConverter: require('MarkdownToQQConverter'),
-                NotificationSystem: require('NotificationSystem'),
+                QQMindMapParser: modules.QQMindMapParser,
+                QQToMarkdownConverter: modules.QQToMarkdownConverter,
+                MarkdownToQQConverter: modules.MarkdownToQQConverter,
+                NotificationSystem: modules.NotificationSystem,
                 status: 'ready'
             };
 
@@ -551,4 +582,4 @@
     // 启动主函数
     main();
 
-})(); 
+})(window.markdownit, window.DOMPurify, window.he); 

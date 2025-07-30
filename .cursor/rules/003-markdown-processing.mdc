@@ -1,10 +1,7 @@
 ---
+description: 规范 Markdown 处理流程，重点使用 markdown-it 令牌系统进行富文本转换。涵盖令牌类型处理、格式保持、语义保持、边缘情况处理等关键方面，确保转换的准确性和完整性。
 alwaysApply: false
-description: 
-globs:
-
 ---
-
 # Markdown 处理规则
 
 ## 🔧 Markdown-it 令牌处理

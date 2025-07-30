@@ -3,8 +3,16 @@
  * 负责将Markdown格式转换为QQ思维导图数据
  */
 class MarkdownToQQConverter {
-    constructor(markdownIt) {
+    /**
+     * @param {object} markdownIt - markdown-it 实例
+     * @param {object} he - he 库实例
+     */
+    constructor(markdownIt, he) {
+        if (!he || typeof he.encode !== 'function') {
+            throw new Error("MarkdownToQQConverter requires the 'he' library, but it was not provided or is invalid.");
+        }
         this.md = markdownIt;
+        this.he = he;
         this.PRESENTATION_NODE_TITLE = 'Presentation';
         this.HEADER_LABEL = { 
             id: 'qq-mind-map-header-label', 
@@ -294,16 +302,89 @@ class MarkdownToQQConverter {
      * @returns {Object} 代码块节点
      */
     createCodeBlockNode(codeLines, language) {
-        // 修复：确保代码内容完整保留，包括特殊字符
-        const codeContent = codeLines.join('\n');
+        // 修复：生成QQ思维导图期望的HTML格式
         const title = language ? `\`\`\`${language}` : '```';
+        
+        // 将代码行转换为QQ思维导图期望的HTML格式
+        const htmlContent = this.convertCodeLinesToQQHtml(codeLines);
         
         return {
             title: this.createRichTextNode(title),
             labels: [this.CODE_BLOCK_LABEL],
-            notes: { content: `<pre><code>${this.escapeHtml(codeContent)}</code></pre>` },
+            notes: { content: htmlContent },
             children: { attached: [] }
         };
+    }
+
+    /**
+     * 将代码行转换为QQ思维导图期望的HTML格式
+     * @param {Array} codeLines - 代码行数组
+     * @returns {string} QQ思维导图格式的HTML
+     */
+    convertCodeLinesToQQHtml(codeLines) {
+        const paragraphs = [];
+        let currentParagraphLines = [];
+
+        const flushParagraph = () => {
+            if (currentParagraphLines.length > 0) {
+                const paragraphContent = currentParagraphLines.map(line => this.processCodeLine(line)).join('');
+                paragraphs.push(`<p>${paragraphContent}</p>`);
+                currentParagraphLines = [];
+            }
+        };
+
+        for (const line of codeLines) {
+            if (line.trim() === '') {
+                flushParagraph();
+                paragraphs.push('<p><br></p>');
+            } else {
+                currentParagraphLines.push(line);
+            }
+        }
+        flushParagraph();
+
+        // Prepend the code block language identifier
+        if (paragraphs.length > 0) {
+            paragraphs[0] = paragraphs[0].replace('<p>', '<p>```cpp<br>');
+        } else {
+            paragraphs.push('<p>```cpp<br></p>');
+        }
+        
+        // Append the closing tag
+        paragraphs.push('<p>```</p>');
+
+        return paragraphs.join('\n');
+    }
+
+    /**
+     * 创建段落
+     * @param {Array} lines - 代码行数组
+     * @returns {string} 段落HTML
+     */
+    createParagraph(lines) {
+        const processedLines = lines.map(line => this.processCodeLine(line));
+        return `<p>${processedLines.join('')}</p>`;
+    }
+
+    /**
+     * 处理单行代码，包括缩进和特殊字符
+     * @param {string} line - 原始代码行
+     * @returns {string} 处理后的HTML
+     */
+    processCodeLine(line) {
+        // Use `he` library for robust HTML entity escaping
+        const escapedLine = this.he.encode(line, {
+            'useNamedReferences': false, // Use hex codes, e.g., &#xA9; not &copy;
+            'allowUnsafeSymbols': true // Do not escape &, <, >, etc. yet
+        });
+
+        // Manually handle the specific quote escaping required by QQ Mind Map
+        const finalLine = escapedLine.replace(/"/g, '\\"');
+
+        // Handle indentation by replacing leading spaces with &nbsp;
+        const withIndentation = finalLine.replace(/^ +/g, (spaces) => '&nbsp;'.repeat(spaces.length));
+
+        return withIndentation + '<br>';
     }
 
     /**
@@ -311,15 +392,7 @@ class MarkdownToQQConverter {
      * @param {string} text - 需要转义的文本
      * @returns {string} 转义后的文本
      */
-    escapeHtml(text) {
-        return text
-            .replace(/&/g, '&amp;')
-            .replace(/</g, '&lt;')
-            .replace(/>/g, '&gt;')
-            .replace(/"/g, '&quot;')
-            .replace(/'/g, '&#39;');
-    }
-
+    
     /**
      * 附加节点
      * @param {Object} newNode - 新节点

@@ -74,15 +74,34 @@
 
         initializeComponents() {
             try {
+                // 获取模块
                 const NotificationSystem = modules.NotificationSystem;
                 const QQMindMapParser = modules.QQMindMapParser;
                 const QQToMarkdownConverter = modules.QQToMarkdownConverter;
                 const MarkdownToQQConverter = modules.MarkdownToQQConverter;
                 const InterfaceManager = modules.InterfaceManager;
+                const IndentManager = modules.IndentManager;
+                const LinePreserver = modules.LinePreserver;
+                const RichTextFormatter = modules.RichTextFormatter;
+                const CodeBlockHandler = modules.CodeBlockHandler;
+                const NodeManager = modules.NodeManager;
+                const HtmlUtils = modules.HtmlUtils;
 
                 this.notifications = new NotificationSystem();
                 this.notifications.addStyles();
+                
+                // 创建依赖实例
                 this.qqParser = new QQMindMapParser();
+                this.indentManager = new IndentManager();
+                this.linePreserver = new LinePreserver(this.indentManager);
+                this.richTextFormatter = new RichTextFormatter(this.qqParser);
+                
+                // 创建共享模块实例
+                this.codeBlockHandler = new CodeBlockHandler(this.richTextFormatter, he);
+                this.nodeManager = new NodeManager();
+                this.htmlUtils = new HtmlUtils();
+                
+                // 创建转换器，传递共享模块依赖
                 this.qqToMdConverter = new QQToMarkdownConverter(this.qqParser, DOMPurify);
                 this.mdToQqConverter = new MarkdownToQQConverter(this.md, he);
                 this.interfaceManager = new InterfaceManager(this);
@@ -285,6 +304,9 @@
                 MarkdownToQQConverter: modules.MarkdownToQQConverter,
                 NotificationSystem: modules.NotificationSystem,
                 InterfaceManager: modules.InterfaceManager,
+                CodeBlockHandler: modules.CodeBlockHandler,
+                NodeManager: modules.NodeManager,
+                HtmlUtils: modules.HtmlUtils,
                 status: 'ready'
             };
             

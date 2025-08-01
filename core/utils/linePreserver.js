@@ -3,12 +3,20 @@
  * 专门处理 Markdown 转换过程中的空行和格式保持
  */
 class LinePreserver {
-    constructor() {
+    constructor(indentManager = null) {
         this.config = {
             preserveEmptyLines: true,    // 是否保持空行
             normalizeSpacing: true,      // 是否标准化间距
             maxConsecutiveEmptyLines: 2  // 最大连续空行数
         };
+        
+        // 注入 IndentManager 依赖
+        this.indentManager = indentManager;
+        
+        // 如果没有提供 IndentManager，尝试从全局获取
+        if (!this.indentManager && typeof window !== 'undefined') {
+            this.indentManager = window.IndentManager ? new window.IndentManager() : null;
+        }
     }
 
     /**
@@ -41,7 +49,7 @@ class LinePreserver {
     }
 
     /**
-     * 计算缩进级别
+     * 计算缩进级别 - 使用 IndentManager 的方法
      * @param {string} line - 行内容
      * @returns {number} 缩进级别
      */
@@ -49,6 +57,12 @@ class LinePreserver {
         const match = line.match(/^(\s*)/);
         if (!match) return 0;
         
+        // 优先使用注入的 IndentManager
+        if (this.indentManager && typeof this.indentManager.calculateIndentLevel === 'function') {
+            return this.indentManager.calculateIndentLevel(match[1]);
+        }
+        
+        // 降级到简单计算
         const indentText = match[1];
         return (indentText.match(/\t/g) || []).length;
     }

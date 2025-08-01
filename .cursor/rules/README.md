@@ -6,13 +6,9 @@
 
 ```
 .cursor/rules/
-├── 001-core-philosophy.mdc      # 核心哲学 - 根本原因问题解决
-├── 002-architecture-principles.mdc  # 架构原则 - 模块化设计和代码组织
-├── 003-markdown-processing.mdc   # Markdown处理 - markdown-it令牌处理
-├── 004-qq-mindmap-structure.mdc # QQ思维导图结构 - 数据结构和节点处理
-├── 005-testing-strategy.mdc     # 测试策略 - 测试架构和验证方法
-├── 006-tampermonkey-integration.mdc # Tampermonkey集成 - 用户脚本开发
-├── 007-innovation-guidelines.mdc # 创新指南 - 功能添加和重构指导
+├── 001-core-philosophy.mdc      # 核心哲学 - 根本原因问题解决和架构原则
+├── 002-technical-implementation.mdc # 技术实现 - Markdown处理和QQ思维导图结构
+├── 003-environment-integration.mdc  # 环境集成 - Tampermonkey集成和测试策略
 └── README.md                    # 本文档
 ```
 
@@ -22,78 +18,41 @@
 **适用范围**: 全局 (`**/*`)
 **应用方式**: 始终应用 (`alwaysApply: true`)
 
-核心哲学和问题解决方法，定义项目的基本原则：
-- 根本原因问题解决
-- 深度分析优先
-- 架构驱动设计
-- 数据完整性保证
+核心哲学和根本指导原则，整合了：
+- 根本原因问题解决方法
+- 架构设计原则和代码组织
+- 测试策略和验证方法
+- 创新和重构指导
+- 避免打补丁式编程
 
-### 002-architecture-principles.mdc
+### 002-technical-implementation.mdc
 **适用范围**: 核心模块 (`core/**/*`, `ui/**/*`, `templates/**/*`)
 **应用方式**: 自动附加 (`Auto Attached`)
 
-架构设计原则和代码组织：
-- 模块化设计原则
-- 代码组织结构
-- 技术栈考虑
-- 设计模式应用
-
-### 003-markdown-processing.mdc
-**适用范围**: Markdown相关文件 (`core/converters/md2qq.js`, `core/parsers/mdParser.js`, `core/formatters/richText.js`)
-**应用方式**: 自动附加 (`Auto Attached`)
-
-Markdown处理相关指导：
-- markdown-it令牌处理
-- 转换挑战解决
-- 具体代码示例
-- 性能优化建议
-
-### 004-qq-mindmap-structure.mdc
-**适用范围**: QQ思维导图相关文件 (`core/converters/qq2md.js`, `core/parsers/qqParser.js`)
-**应用方式**: 自动附加 (`Auto Attached`)
-
-QQ思维导图数据结构处理：
-- 节点层次结构
-- 富文本处理
+技术实现指导，涵盖：
+- Markdown-it 令牌处理
+- QQ 思维导图数据结构
+- 转换算法和模式
 - 特殊内容处理
-- 数据完整性验证
+- 性能优化策略
 
-### 005-testing-strategy.mdc
-**适用范围**: 测试相关文件 (`test/**/*`, `**/*test.js`, `**/*Test.js`)
+### 003-environment-integration.mdc
+**适用范围**: 用户脚本相关文件 (`QQmindmap2Obsidian.user.js`, `ui/**/*`, `templates/**/*`, `test/**/*`)
 **应用方式**: 自动附加 (`Auto Attached`)
 
-测试策略和验证方法：
-- 测试架构设计
-- 测试用例设计
-- 验证方法
-- 性能测试
-
-### 006-tampermonkey-integration.mdc
-**适用范围**: 用户脚本相关文件 (`QQmindmap2Obsidian.user.js`, `ui/**/*`, `templates/**/*`)
-**应用方式**: 自动附加 (`Auto Attached`)
-
-Tampermonkey用户脚本开发：
-- CDN依赖管理
+环境集成指导，涵盖：
+- Tampermonkey 用户脚本开发
 - 浏览器环境适配
-- UI组件开发
-- 安全考虑
-
-### 007-innovation-guidelines.mdc
-**适用范围**: 全局 (`**/*`)
-**应用方式**: 代理请求 (`Agent Requested`)
-
-创新和重构指导：
-- 功能添加指导
-- 重构原则
-- 设计模式应用
-- 质量保证
+- UI 组件开发
+- 测试策略和验证方法
+- 安全考虑和性能优化
 
 ## 🚀 使用指南
 
 ### 规则应用优先级
 1. **001-core-philosophy.mdc** - 始终应用，提供基础指导
-2. **特定领域规则** - 根据文件类型自动应用
-3. **007-innovation-guidelines.mdc** - AI根据需求决定是否应用
+2. **002-technical-implementation.mdc** - 技术实现相关文件自动应用
+3. **003-environment-integration.mdc** - 环境集成相关文件自动应用
 
 ### 规则组合使用
 - 多个规则可以同时应用
@@ -144,8 +103,28 @@ Tampermonkey用户脚本开发：
 参考 @core/converters/md2qq.js 中的转换逻辑
 ```
 
+## 📊 优化总结
+
+### 优化前
+- 8个规则文件
+- 内容重复和冗余
+- 过于详细的代码示例
+- 维护成本高
+
+### 优化后
+- 3个核心规则文件
+- 内容整合和精简
+- 保留关键概念和示例
+- 降低维护成本
+
+### 优化效果
+- **数量减少**: 从8个文件减少到3个文件（减少62.5%）
+- **内容精简**: 去除重复内容，保留核心概念
+- **结构清晰**: 按功能分类，逻辑更清晰
+- **维护简化**: 减少文件数量，降低维护成本
+
 ---
 
-**版本**: 2.0.0  
+**版本**: 3.0.0  
 **最后更新**: 2024年12月  
 **维护者**: QQmindmap2Obsidian 开发团队 

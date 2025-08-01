@@ -139,4 +139,11 @@ class NodeManager {
             forest.push({ type: 5, data: newNode });
         }
     }
+}
+
+// 导出模块
+if (typeof module !== 'undefined' && module.exports) {
+    module.exports = NodeManager;
+} else if (typeof window !== 'undefined') {
+    window.NodeManager = NodeManager;
 } 

@@ -1,11 +1,40 @@
----
-description: 定义 QQ 思维导图数据结构处理规范，包括节点层次结构、富文本处理、注释字段管理等核心概念。涵盖节点转换模式、特殊内容处理、数据完整性验证等关键功能。
-alwaysApply: false
----
+# 技术实现指导
 
-# QQ 思维导图结构
+## 🔧 Markdown-it 令牌处理
 
-## 🏗️ 数据结构理解
+### 令牌类型理解
+- **内联令牌**：处理文本、链接、强调等内联元素
+- **块级令牌**：处理标题、段落、列表、代码块等块级元素
+- **嵌套内容**：正确处理复杂的嵌套结构
+
+### 令牌处理模式
+```javascript
+// 处理内联令牌
+function processInlineTokens(tokens) {
+    return tokens.map(token => {
+        switch (token.type) {
+            case 'text': return processTextToken(token);
+            case 'link_open': return processLinkToken(token);
+            case 'strong_open': return processStrongToken(token);
+            default: return token;
+        }
+    });
+}
+
+// 处理块级令牌
+function processBlockTokens(tokens) {
+    return tokens.map(token => {
+        switch (token.type) {
+            case 'heading_open': return processHeadingToken(token);
+            case 'code_block': return processCodeBlockToken(token);
+            case 'list_item_open': return processListItemToken(token);
+            default: return token;
+        }
+    });
+}
+```
+
+## 🏗️ QQ 思维导图数据结构
 
 ### 节点层次结构
 - **父子关系**：理解节点间的层级关系
@@ -91,6 +120,19 @@ function convertCodeBlock(node) {
     
     return '';
 }
+
+// 代码块转换示例
+function createCodeBlockNode(codeLines, language) {
+    const codeContent = codeLines.join('\n');
+    const title = language ? `\`\`\`${language}` : '```';
+    
+    return {
+        title: createRichTextNode(title),
+        labels: [CODE_BLOCK_LABEL],
+        notes: { content: `<pre><code>${escapeHtml(codeContent)}</code></pre>` },
+        children: { attached: [] }
+    };
+}
 ```
 
 ### 图片处理
@@ -160,6 +202,57 @@ function convertDivider(node) {
 - 优雅地处理格式错误
 - 记录转换过程中的问题
 - 支持部分转换和错误恢复
+
+### 特殊字符处理
+```javascript
+// HTML 转义函数
+function escapeHtml(text) {
+    return text
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
+// HTML 反转义函数
+function unescapeHtml(text) {
+    return text
+        .replace(/&amp;/g, '&')
+        .replace(/&lt;/g, '<')
+        .replace(/&gt;/g, '>')
+        .replace(/&quot;/g, '"')
+        .replace(/&#39;/g, "'");
+}
+```
+
+### 富文本处理
+```javascript
+// 富文本转换示例
+function createRichTextNode(markdown) {
+    const tokens = markdownIt.parse(markdown, {});
+    return buildRichTextFromTokens(tokens);
+}
+
+function buildRichTextFromTokens(tokens) {
+    // 构建富文本结构的逻辑
+    // 处理内联格式、链接、图片等
+}
+```
+
+## 🚀 性能优化
+
+### 缓存策略
+- 缓存解析结果以避免重复处理
+- 使用流式处理处理大文档
+- 优化令牌遍历算法
+- 考虑内存使用和垃圾回收
+
+### 学习资源
+- **官方文档**：使用 MCP Context7 访问 markdown-it 文档
+- **插件生态系统**：探索现有插件以获取灵感
+- **令牌处理**：深入了解 markdown-it 的令牌系统
+- **最佳实践**：遵循已建立的 markdown 处理模式
 description:
 globs:
 alwaysApply: false

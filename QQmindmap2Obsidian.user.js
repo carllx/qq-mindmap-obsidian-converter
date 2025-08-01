@@ -411,6 +411,176 @@ if (typeof module !== 'undefined' && module.exports) {
         return LinePreserver;
     });
 
+    define('QQMindMapParser', function() {
+        /**
+ * QQ思维导图解析器
+ * 负责解析QQ思维导图的HTML结构和数据格式
+ */
+class QQMindMapParser {
+    constructor() {
+        this.PRESENTATION_NODE_TITLE = 'Presentation';
+    }
+
+    /**
+     * 从HTML中提取思维导图数据
+     * @param {string} html - 包含思维导图数据的HTML
+     * @returns {Array} 思维导图节点数组
+     */
+    extractMindMapData(html) {
+        try {
+            const mindMapElement = new DOMParser()
+                .parseFromString(html, 'text/html')
+                .querySelector('[data-mind-map]');
+            
+            if (!mindMapElement) {
+                throw new Error('No data-mind-map attribute found in HTML');
+            }
+            
+            return JSON.parse(mindMapElement.getAttribute('data-mind-map'));
+        } catch (error) {
+            throw new Error(`Failed to extract mind map data: ${error.message}`);
+        }
+    }
+
+    /**
+     * 解析节点结构
+     * @param {Object} node - 思维导图节点
+     * @returns {Object} 解析后的节点数据
+     */
+    parseNode(node) {
+        const data = node.data || node;
+        return {
+            title: this.parseTitle(data.title),
+            images: data.images || [],
+            labels: data.labels || [],
+            notes: data.notes,
+            children: this.parseChildren(data.children),
+            isHeader: this.isHeaderNode(data),
+            isPresentation: data.title === this.PRESENTATION_NODE_TITLE,
+            isDivider: data.title === '---'
+        };
+    }
+
+    /**
+     * 解析标题内容
+     * @param {Object|string} title - 标题对象或字符串
+     * @returns {Object} 解析后的标题数据
+     */
+    parseTitle(title) {
+        if (typeof title === 'string') {
+            return { type: 'text', content: title, styles: {} };
+        }
+        
+        if (!title?.children) {
+            return { type: 'text', content: '', styles: {} };
+        }
+
+        return {
+            type: 'rich-text',
+            content: this.extractTextContent(title),
+            styles: this.extractTextStyles(title)
+        };
+    }
+
+    /**
+     * 提取文本内容
+     * @param {Object} titleObject - 标题对象
+     * @returns {string} 提取的文本内容
+     */
+    extractTextContent(titleObject) {
+        return titleObject.children
+            .flatMap(p => p.children?.map(t => t.text || '') || [])
+            .join('');
+    }
+
+    /**
+     * 提取文本样式
+     * @param {Object} titleObject - 标题对象
+     * @returns {Object} 样式对象
+     */
+    extractTextStyles(titleObject) {
+        const styles = {};
+        titleObject.children.forEach(p => {
+            p.children?.forEach(textNode => {
+                if (textNode.backgroundColor === '#FFF3A1') styles.highlight = true;
+                if (textNode.strike) styles.strikethrough = true;
+                if (textNode.fontStyle === 'italic') styles.italic = true;
+                if (textNode.fontWeight === 700) styles.bold = true;
+                if (textNode.underline) styles.underline = true;
+            });
+        });
+        return styles;
+    }
+
+    /**
+     * 解析子节点
+     * @param {Object} children - 子节点对象
+     * @returns {Array} 子节点数组
+     */
+    parseChildren(children) {
+        if (!children?.attached) return [];
+        return children.attached.map(child => this.parseNode(child));
+    }
+
+    /**
+     * 判断是否为标题节点
+     * @param {Object} data - 节点数据
+     * @returns {boolean} 是否为标题节点
+     */
+    isHeaderNode(data) {
+        return data.labels?.some(label => label.text === 'header');
+    }
+
+    /**
+     * 生成纯文本表示
+     * @param {Array} nodes - 节点数组
+     * @param {number} depth - 当前深度
+     * @returns {string} 纯文本内容
+     */
+    generatePlainText(nodes, depth = 0) {
+        return nodes.map(node => {
+            const parsedNode = this.parseNode(node);
+            let text = '';
+
+            if (parsedNode.isPresentation && parsedNode.notes?.content) {
+                text = this.convertNoteHtmlToPlainText(parsedNode.notes.content) + '\n';
+            } else if (!parsedNode.isDivider) {
+                const titleText = typeof parsedNode.title === 'string' 
+                    ? parsedNode.title 
+                    : parsedNode.title.content;
+                
+                if (titleText.trim()) {
+                    text = '\t'.repeat(depth) + titleText.trim() + '\n';
+                }
+            }
+
+            if (parsedNode.children.length > 0) {
+                text += this.generatePlainText(parsedNode.children, depth + 1);
+            }
+
+            return text;
+        }).join('');
+    }
+
+    /**
+     * 转换注释HTML为纯文本
+     * @param {string} html - HTML内容
+     * @returns {string} 纯文本内容
+     */
+    convertNoteHtmlToPlainText(html) {
+        const doc = new DOMParser().parseFromString(html, 'text/html');
+        doc.querySelectorAll('br').forEach(br => br.replaceWith('\n'));
+        return doc.body.textContent || '';
+    }
+}
+
+// 导出模块
+if (typeof window !== 'undefined') {
+    window.QQMindMapParser = QQMindMapParser;
+} 
+        return QQMindMapParser;
+    });
+
     define('RichTextFormatter', function() {
         /**
  * 富文本格式处理器
@@ -819,176 +989,6 @@ if (typeof module !== 'undefined' && module.exports) {
         return RichTextFormatter;
     });
 
-    define('QQMindMapParser', function() {
-        /**
- * QQ思维导图解析器
- * 负责解析QQ思维导图的HTML结构和数据格式
- */
-class QQMindMapParser {
-    constructor() {
-        this.PRESENTATION_NODE_TITLE = 'Presentation';
-    }
-
-    /**
-     * 从HTML中提取思维导图数据
-     * @param {string} html - 包含思维导图数据的HTML
-     * @returns {Array} 思维导图节点数组
-     */
-    extractMindMapData(html) {
-        try {
-            const mindMapElement = new DOMParser()
-                .parseFromString(html, 'text/html')
-                .querySelector('[data-mind-map]');
-            
-            if (!mindMapElement) {
-                throw new Error('No data-mind-map attribute found in HTML');
-            }
-            
-            return JSON.parse(mindMapElement.getAttribute('data-mind-map'));
-        } catch (error) {
-            throw new Error(`Failed to extract mind map data: ${error.message}`);
-        }
-    }
-
-    /**
-     * 解析节点结构
-     * @param {Object} node - 思维导图节点
-     * @returns {Object} 解析后的节点数据
-     */
-    parseNode(node) {
-        const data = node.data || node;
-        return {
-            title: this.parseTitle(data.title),
-            images: data.images || [],
-            labels: data.labels || [],
-            notes: data.notes,
-            children: this.parseChildren(data.children),
-            isHeader: this.isHeaderNode(data),
-            isPresentation: data.title === this.PRESENTATION_NODE_TITLE,
-            isDivider: data.title === '---'
-        };
-    }
-
-    /**
-     * 解析标题内容
-     * @param {Object|string} title - 标题对象或字符串
-     * @returns {Object} 解析后的标题数据
-     */
-    parseTitle(title) {
-        if (typeof title === 'string') {
-            return { type: 'text', content: title, styles: {} };
-        }
-        
-        if (!title?.children) {
-            return { type: 'text', content: '', styles: {} };
-        }
-
-        return {
-            type: 'rich-text',
-            content: this.extractTextContent(title),
-            styles: this.extractTextStyles(title)
-        };
-    }
-
-    /**
-     * 提取文本内容
-     * @param {Object} titleObject - 标题对象
-     * @returns {string} 提取的文本内容
-     */
-    extractTextContent(titleObject) {
-        return titleObject.children
-            .flatMap(p => p.children?.map(t => t.text || '') || [])
-            .join('');
-    }
-
-    /**
-     * 提取文本样式
-     * @param {Object} titleObject - 标题对象
-     * @returns {Object} 样式对象
-     */
-    extractTextStyles(titleObject) {
-        const styles = {};
-        titleObject.children.forEach(p => {
-            p.children?.forEach(textNode => {
-                if (textNode.backgroundColor === '#FFF3A1') styles.highlight = true;
-                if (textNode.strike) styles.strikethrough = true;
-                if (textNode.fontStyle === 'italic') styles.italic = true;
-                if (textNode.fontWeight === 700) styles.bold = true;
-                if (textNode.underline) styles.underline = true;
-            });
-        });
-        return styles;
-    }
-
-    /**
-     * 解析子节点
-     * @param {Object} children - 子节点对象
-     * @returns {Array} 子节点数组
-     */
-    parseChildren(children) {
-        if (!children?.attached) return [];
-        return children.attached.map(child => this.parseNode(child));
-    }
-
-    /**
-     * 判断是否为标题节点
-     * @param {Object} data - 节点数据
-     * @returns {boolean} 是否为标题节点
-     */
-    isHeaderNode(data) {
-        return data.labels?.some(label => label.text === 'header');
-    }
-
-    /**
-     * 生成纯文本表示
-     * @param {Array} nodes - 节点数组
-     * @param {number} depth - 当前深度
-     * @returns {string} 纯文本内容
-     */
-    generatePlainText(nodes, depth = 0) {
-        return nodes.map(node => {
-            const parsedNode = this.parseNode(node);
-            let text = '';
-
-            if (parsedNode.isPresentation && parsedNode.notes?.content) {
-                text = this.convertNoteHtmlToPlainText(parsedNode.notes.content) + '\n';
-            } else if (!parsedNode.isDivider) {
-                const titleText = typeof parsedNode.title === 'string' 
-                    ? parsedNode.title 
-                    : parsedNode.title.content;
-                
-                if (titleText.trim()) {
-                    text = '\t'.repeat(depth) + titleText.trim() + '\n';
-                }
-            }
-
-            if (parsedNode.children.length > 0) {
-                text += this.generatePlainText(parsedNode.children, depth + 1);
-            }
-
-            return text;
-        }).join('');
-    }
-
-    /**
-     * 转换注释HTML为纯文本
-     * @param {string} html - HTML内容
-     * @returns {string} 纯文本内容
-     */
-    convertNoteHtmlToPlainText(html) {
-        const doc = new DOMParser().parseFromString(html, 'text/html');
-        doc.querySelectorAll('br').forEach(br => br.replaceWith('\n'));
-        return doc.body.textContent || '';
-    }
-}
-
-// 导出模块
-if (typeof window !== 'undefined') {
-    window.QQMindMapParser = QQMindMapParser;
-} 
-        return QQMindMapParser;
-    });
-
     define('CodeBlockHandler', function() {
         /**
  * 代码块处理器
@@ -1105,8 +1105,11 @@ class CodeBlockHandler {
      * @returns {string} 处理后的HTML
      */
     processCodeLine(line) {
+        // 修复：先处理缩进，将制表符转换为空格
+        let processedLine = line.replace(/\t/g, '    '); // 将制表符转换为4个空格
+        
         // 使用he库进行HTML实体编码
-        const escapedLine = this.he.encode(line, {
+        const escapedLine = this.he.encode(processedLine, {
             'useNamedReferences': false,
             'allowUnsafeSymbols': false,
             'decimal': false // 使用十六进制格式
@@ -1138,16 +1141,16 @@ class CodeBlockHandler {
         // 处理换行符
         result = result.replace(/\n/g, '\\n');
         result = result.replace(/\r/g, '\\r');
-        result = result.replace(/\t/g, '\\t');
+        // 注意：制表符已经在前面转换为空格，这里不需要再处理
 
         // 添加换行标签
         return result + '<br>';
     }
 
     /**
-     * 转换代码块节点为Markdown (从 qq2md.js 提取)
+     * 转换代码块节点 (从 qq2md.js 提取)
      * @param {Object} node - 代码块节点
-     * @param {object} richTextFormatter - 富文本格式化器
+     * @param {Object} richTextFormatter - 富文本格式化器
      * @returns {string} Markdown文本
      */
     convertCodeBlock(node, richTextFormatter) {
@@ -1155,7 +1158,20 @@ class CodeBlockHandler {
         let markdown = '';
 
         // 获取代码块标题（语言标识）
-        const titleText = richTextFormatter.convertRichTextToMarkdown(data.title).trim();
+        let titleText = '';
+        if (richTextFormatter && typeof richTextFormatter.convertRichTextToMarkdown === 'function') {
+            titleText = richTextFormatter.convertRichTextToMarkdown(data.title).trim();
+        } else {
+            // 降级处理：直接获取标题文本
+            if (typeof data.title === 'string') {
+                titleText = data.title;
+            } else if (data.title && typeof data.title === 'object') {
+                // 尝试从富文本对象中提取文本
+                titleText = this.extractTextFromRichText(data.title);
+            } else {
+                titleText = '';
+            }
+        }
         
         // 处理语言标识 - 避免重复的代码块标记
         let language = '';
@@ -1176,11 +1192,19 @@ class CodeBlockHandler {
         // 确保代码内容不包含代码块标记
         codeContent = this.cleanCodeBlockMarkers(codeContent);
 
+        // 修复：确保代码内容有正确的换行符
+        if (codeContent && !codeContent.endsWith('\n')) {
+            codeContent += '\n';
+        }
+
+        // 修复：确保代码内容开头没有多余的换行符
+        codeContent = codeContent.replace(/^\n+/, '');
+
         // 生成Markdown代码块 - 避免嵌套
         if (language && language !== '```' && language !== '') {
-            markdown += `\n\`\`\`${language}\n${codeContent}\n\`\`\`\n\n`;
+            markdown += `\n\`\`\`${language}\n${codeContent}\`\`\`\n\n`;
         } else {
-            markdown += `\n\`\`\`\n${codeContent}\n\`\`\`\n\n`;
+            markdown += `\n\`\`\`\n${codeContent}\`\`\`\n\n`;
         }
 
         return markdown;
@@ -1200,13 +1224,26 @@ class CodeBlockHandler {
         // 2. 清理代码块标记，但保留注释
         codeContent = this.cleanCodeBlockMarkers(codeContent);
         
-        // 3. 如果内容为空，尝试其他方法
+        // 3. 修复：处理换行符，将<br>标签转换为换行符
+        codeContent = codeContent.replace(/<br\s*\/?>/gi, '\n');
+        
+        // 4. 修复：处理制表符，将\t转换为空格
+        codeContent = codeContent.replace(/\\t/g, '    '); // 将制表符转换为4个空格
+        
+        // 5. 修复：确保换行符正确保留
+        // 将连续的换行符标准化为单个换行符
+        codeContent = codeContent.replace(/\n{2,}/g, '\n');
+        
+        // 6. 如果内容为空，尝试其他方法
         if (!codeContent.trim()) {
             // 回退到原有的pre/code标签解析
             const preCodeMatch = htmlContent.match(/<pre><code>([\s\S]*?)<\/code><\/pre>/);
             if (preCodeMatch) {
                 codeContent = this.decodeHtmlEntities(preCodeMatch[1]);
                 codeContent = this.cleanCodeBlockMarkers(codeContent);
+                codeContent = codeContent.replace(/<br\s*\/?>/gi, '\n');
+                codeContent = codeContent.replace(/\\t/g, '    ');
+                codeContent = codeContent.replace(/\n{2,}/g, '\n');
                 return codeContent;
             }
             
@@ -1215,6 +1252,9 @@ class CodeBlockHandler {
             if (codeMatch) {
                 codeContent = this.decodeHtmlEntities(codeMatch[1]);
                 codeContent = this.cleanCodeBlockMarkers(codeContent);
+                codeContent = codeContent.replace(/<br\s*\/?>/gi, '\n');
+                codeContent = codeContent.replace(/\\t/g, '    ');
+                codeContent = codeContent.replace(/\n{2,}/g, '\n');
                 return codeContent;
             }
             
@@ -1223,6 +1263,9 @@ class CodeBlockHandler {
             if (preMatch) {
                 codeContent = this.decodeHtmlEntities(preMatch[1]);
                 codeContent = this.cleanCodeBlockMarkers(codeContent);
+                codeContent = codeContent.replace(/<br\s*\/?>/gi, '\n');
+                codeContent = codeContent.replace(/\\t/g, '    ');
+                codeContent = codeContent.replace(/\n{2,}/g, '\n');
                 return codeContent;
             }
         }
@@ -1240,9 +1283,15 @@ class CodeBlockHandler {
         // 移除开头的代码块标记（包括语言标识）
         codeContent = codeContent.replace(/^```\w*\n?/, '');
         // 移除结尾的代码块标记
-        codeContent = codeContent.replace(/```\s*$/, '');
+        codeContent = codeContent.replace(/\n?```$/, '');
+        // 移除中间的代码块标记
+        codeContent = codeContent.replace(/\n```\w*\n/g, '\n');
+        codeContent = codeContent.replace(/\n```\n/g, '\n');
         
-        return codeContent;
+        // 清理多余的换行符
+        codeContent = codeContent.replace(/\n{3,}/g, '\n\n');
+        
+        return codeContent.trim();
     }
 
     /**
@@ -1261,18 +1310,58 @@ class CodeBlockHandler {
      * @returns {string} 纯文本内容
      */
     simpleHtmlToText(html) {
-        // 创建临时DOM元素来解析HTML
-        const tempDiv = document.createElement('div');
-        tempDiv.innerHTML = html;
+        // 修复：统一使用字符串处理，避免DOM解析丢失换行符
+        let text = html;
         
-        // 提取文本内容
-        let text = tempDiv.textContent || tempDiv.innerText || '';
+        // 移除HTML标签，但保留换行符
+        text = text.replace(/<br\s*\/?>/gi, '\n');
+        text = text.replace(/<\/?p[^>]*>/gi, '\n');
+        text = text.replace(/<\/?div[^>]*>/gi, '\n');
+        text = text.replace(/<\/?span[^>]*>/gi, '');
+        text = text.replace(/<\/?code[^>]*>/gi, '');
+        text = text.replace(/<\/?pre[^>]*>/gi, '');
         
-        // 清理多余的空白字符
-        text = text.replace(/\s+/g, ' ').trim();
+        // 解码HTML实体
+        text = this.decodeHtmlEntities(text);
+        
+        // 清理多余的换行符，但保持基本结构
+        text = text.replace(/\n{3,}/g, '\n\n');
         
         return text;
     }
+
+    /**
+     * 从富文本对象中提取文本内容
+     * @param {Object} richText - 富文本对象
+     * @returns {string} 提取的文本
+     */
+    extractTextFromRichText(richText) {
+        if (!richText) return '';
+        
+        if (typeof richText === 'string') {
+            return richText;
+        }
+        
+        if (richText.children && Array.isArray(richText.children)) {
+            return richText.children.map(child => {
+                if (typeof child === 'string') {
+                    return child;
+                } else if (child && typeof child === 'object') {
+                    return child.text || this.extractTextFromRichText(child);
+                }
+                return '';
+            }).join('');
+        }
+        
+        return richText.text || '';
+    }
+}
+
+// 导出模块
+if (typeof module !== 'undefined' && module.exports) {
+    module.exports = CodeBlockHandler;
+} else if (typeof window !== 'undefined') {
+    window.CodeBlockHandler = CodeBlockHandler;
 } 
         return CodeBlockHandler;
     });
@@ -1419,6 +1508,13 @@ class NodeManager {
             forest.push({ type: 5, data: newNode });
         }
     }
+}
+
+// 导出模块
+if (typeof module !== 'undefined' && module.exports) {
+    module.exports = NodeManager;
+} else if (typeof window !== 'undefined') {
+    window.NodeManager = NodeManager;
 } 
         return NodeManager;
     });
@@ -1495,6 +1591,9 @@ class HtmlUtils {
         // 将多个连续的换行符合并为两个换行符
         text = text.replace(/\n{3,}/g, '\n\n');
         
+        // 修复：处理制表符，将\t转换为空格
+        text = text.replace(/\\t/g, '    '); // 将制表符转换为4个空格
+        
         return text;
     }
 
@@ -1520,12 +1619,27 @@ class HtmlUtils {
             
             const doc = new DOMParser().parseFromString(html, 'text/html');
             doc.querySelectorAll('br').forEach(br => br.replaceWith('\n'));
-            return doc.body.textContent || '';
+            let text = doc.body.textContent || '';
+            
+            // 修复：处理制表符，将\t转换为空格
+            text = text.replace(/\\t/g, '    '); // 将制表符转换为4个空格
+            
+            return text;
         } catch (error) {
             console.log('DOMParser failed, using fallback:', error.message);
-            return this.simpleHtmlToText(html);
+            let text = this.simpleHtmlToText(html);
+            // 修复：处理制表符，将\t转换为空格
+            text = text.replace(/\\t/g, '    '); // 将制表符转换为4个空格
+            return text;
         }
     }
+}
+
+// 导出模块
+if (typeof module !== 'undefined' && module.exports) {
+    module.exports = HtmlUtils;
+} else if (typeof window !== 'undefined') {
+    window.HtmlUtils = HtmlUtils;
 } 
         return HtmlUtils;
     });
@@ -1540,6 +1654,8 @@ class HtmlUtils {
 let RichTextFormatter;
 let IndentManager;
 let LinePreserver;
+let CodeBlockHandler;
+let HtmlUtils;
 
 // 在浏览器环境中，直接使用全局对象，不尝试require
 if (typeof window !== 'undefined') {
@@ -1547,25 +1663,30 @@ if (typeof window !== 'undefined') {
     RichTextFormatter = window.RichTextFormatter;
     IndentManager = window.IndentManager;
     LinePreserver = window.LinePreserver;
+    CodeBlockHandler = window.CodeBlockHandler;
+    HtmlUtils = window.HtmlUtils;
 } else if (typeof require !== 'undefined') {
     // Node.js 环境：使用require
     try {
         RichTextFormatter = require('../formatters/richText.js');
         IndentManager = require('../utils/indentManager.js');
         LinePreserver = require('../utils/linePreserver.js');
+        CodeBlockHandler = require('./shared/codeBlockHandler.js');
+        HtmlUtils = require('./shared/htmlUtils.js');
     } catch (e) {
         console.warn('Node.js环境下模块加载失败:', e.message);
     }
 }
 
 class QQToMarkdownConverter {
-    constructor(qqParser = null) {
+    constructor(qqParser = null, DOMPurify = null) {
         this.PRESENTATION_NODE_TITLE = 'Presentation';
         // 延迟初始化依赖，避免模块未完全加载时出错
         this._initialized = false;
         
-        // 注入 QQMindMapParser 依赖
+        // 注入依赖
         this.qqParser = qqParser;
+        this.DOMPurify = DOMPurify;
         
         // 如果没有提供 qqParser，尝试从全局获取
         if (!this.qqParser && typeof window !== 'undefined') {
@@ -1585,12 +1706,25 @@ class QQToMarkdownConverter {
                 this.indentManager = new (window.IndentManager || IndentManager)();
                 this.linePreserver = new (window.LinePreserver || LinePreserver)();
                 this.richTextFormatter = new (window.RichTextFormatter || RichTextFormatter)();
+                
+                // 创建共享模块实例
+                this.codeBlockHandler = new (window.CodeBlockHandler || CodeBlockHandler)(
+                    this.richTextFormatter, 
+                    window.he
+                );
+                this.htmlUtils = new (window.HtmlUtils || HtmlUtils)();
+                
                 this._initialized = true;
             } else {
                 // Node.js 环境
                 this.indentManager = new IndentManager();
                 this.linePreserver = new LinePreserver();
                 this.richTextFormatter = new RichTextFormatter();
+                
+                // 创建共享模块实例
+                this.codeBlockHandler = new CodeBlockHandler(this.richTextFormatter, require('he'));
+                this.htmlUtils = new HtmlUtils();
+                
                 this._initialized = true;
             }
         } catch (error) {
@@ -1665,14 +1799,37 @@ class QQToMarkdownConverter {
         // 处理图片
         if (data.images) {
             markdown += data.images.map(img => {
-                // 尝试从notes中恢复alt信息
+                // 从notes中提取alt信息
                 let altText = 'image';
                 if (data.notes?.content) {
-                    const altMatch = data.notes.content.match(/<p>Image Alt: (.*?)<\/p>/);
-                    if (altMatch) {
-                        altText = altMatch[1];
+                    // 尝试多种格式匹配alt信息
+                    const altPatterns = [
+                        /<p>Image Alt:\s*(.*?)<\/p>/i,
+                        /<p>Alt:\s*(.*?)<\/p>/i,
+                        /<p>图片描述:\s*(.*?)<\/p>/i,
+                        /<p>描述:\s*(.*?)<\/p>/i,
+                        /alt:\s*(.*?)(?:\n|$)/i,
+                        /图片描述:\s*(.*?)(?:\n|$)/i
+                    ];
+                    
+                    for (const pattern of altPatterns) {
+                        const match = data.notes.content.match(pattern);
+                        if (match && match[1].trim()) {
+                            altText = match[1].trim();
+                            break;
+                        }
+                    }
+                    
+                    // 如果没有找到alt信息，尝试使用notes的纯文本内容作为alt
+                    if (altText === 'image' && data.notes.content.trim()) {
+                        const plainText = this.convertNoteHtmlToPlainText(data.notes.content).trim();
+                        if (plainText && plainText !== 'image') {
+                            altText = plainText;
+                        }
                     }
                 }
+                
+                // 生成Markdown图片格式
                 return `![${altText}](${img.url})\n`;
             }).join('');
         }
@@ -1731,14 +1888,37 @@ class QQToMarkdownConverter {
         // 处理图片
         if (data.images) {
             markdown += data.images.map(img => {
-                // 尝试从notes中恢复alt信息
+                // 从notes中提取alt信息
                 let altText = 'image';
                 if (data.notes?.content) {
-                    const altMatch = data.notes.content.match(/<p>Image Alt: (.*?)<\/p>/);
-                    if (altMatch) {
-                        altText = altMatch[1];
+                    // 尝试多种格式匹配alt信息
+                    const altPatterns = [
+                        /<p>Image Alt:\s*(.*?)<\/p>/i,
+                        /<p>Alt:\s*(.*?)<\/p>/i,
+                        /<p>图片描述:\s*(.*?)<\/p>/i,
+                        /<p>描述:\s*(.*?)<\/p>/i,
+                        /alt:\s*(.*?)(?:\n|$)/i,
+                        /图片描述:\s*(.*?)(?:\n|$)/i
+                    ];
+                    
+                    for (const pattern of altPatterns) {
+                        const match = data.notes.content.match(pattern);
+                        if (match && match[1].trim()) {
+                            altText = match[1].trim();
+                            break;
+                        }
+                    }
+                    
+                    // 如果没有找到alt信息，尝试使用notes的纯文本内容作为alt
+                    if (altText === 'image' && data.notes.content.trim()) {
+                        const plainText = this.convertNoteHtmlToPlainText(data.notes.content).trim();
+                        if (plainText && plainText !== 'image') {
+                            altText = plainText;
+                        }
                     }
                 }
+                
+                // 生成Markdown图片格式
                 return `${indentStr}![${altText}](${img.url})\n`;
             }).join('');
         }
@@ -1784,153 +1964,13 @@ class QQToMarkdownConverter {
     }
 
     /**
-     * 转换代码块节点
+     * 转换代码块节点 - 使用 CodeBlockHandler
      * @param {Object} node - 代码块节点
      * @returns {string} Markdown文本
      */
     convertCodeBlock(node) {
         this._ensureInitialized(); // 确保依赖已初始化
-        const data = node.data || node;
-        let markdown = '';
-
-        // 获取代码块标题（语言标识）
-        const titleText = this.convertRichTextToMarkdown(data.title).trim();
-        
-        // 处理语言标识 - 避免重复的代码块标记
-        let language = '';
-        if (titleText.startsWith('```')) {
-            // 如果标题已经是代码块格式，提取语言
-            language = titleText.replace(/^```/, '').trim();
-        } else {
-            // 否则使用标题作为语言
-            language = titleText;
-        }
-        
-        // 获取代码内容
-        let codeContent = '';
-        if (data.notes?.content) {
-            codeContent = this.extractCodeFromNotes(data.notes.content);
-        }
-
-        // 确保代码内容不包含代码块标记
-        codeContent = this.cleanCodeBlockMarkers(codeContent);
-
-        // 生成Markdown代码块 - 避免嵌套
-        if (language && language !== '```' && language !== '') {
-            markdown += `\n\`\`\`${language}\n${codeContent}\n\`\`\`\n\n`;
-        } else {
-            markdown += `\n\`\`\`\n${codeContent}\n\`\`\`\n\n`;
-        }
-
-        return markdown;
-    }
-
-    /**
-     * 从注释中提取代码内容
-     * @param {string} htmlContent - HTML内容
-     * @returns {string} 代码内容
-     */
-    extractCodeFromNotes(htmlContent) {
-        this._ensureInitialized(); // 确保依赖已初始化
-        // 修复：使用更简单直接的方法解析HTML内容
-        
-        // 1. 直接解析HTML内容，提取所有文本
-        let codeContent = this.simpleHtmlToText(htmlContent);
-        
-        // 2. 清理代码块标记，但保留注释
-        codeContent = this.cleanCodeBlockMarkers(codeContent);
-        
-        // 3. 如果内容为空，尝试其他方法
-        if (!codeContent.trim()) {
-            // 回退到原有的pre/code标签解析
-            const preCodeMatch = htmlContent.match(/<pre><code>([\s\S]*?)<\/code><\/pre>/);
-            if (preCodeMatch) {
-                codeContent = this.decodeHtmlEntities(preCodeMatch[1]);
-                codeContent = this.cleanCodeBlockMarkers(codeContent);
-                return codeContent;
-            }
-            
-            // 尝试从code标签中提取
-            const codeMatch = htmlContent.match(/<code>([\s\S]*?)<\/code>/);
-            if (codeMatch) {
-                codeContent = this.decodeHtmlEntities(codeMatch[1]);
-                codeContent = this.cleanCodeBlockMarkers(codeContent);
-                return codeContent;
-            }
-            
-            // 尝试从pre标签中提取
-            const preMatch = htmlContent.match(/<pre>([\s\S]*?)<\/pre>/);
-            if (preMatch) {
-                codeContent = this.decodeHtmlEntities(preMatch[1]);
-                codeContent = this.cleanCodeBlockMarkers(codeContent);
-                return codeContent;
-            }
-        }
-        
-        return codeContent;
-    }
-
-    /**
-     * 清理代码内容中的代码块标记
-     * @param {string} codeContent - 代码内容
-     * @returns {string} 清理后的代码内容
-     */
-    cleanCodeBlockMarkers(codeContent) {
-        this._ensureInitialized(); // 确保依赖已初始化
-        // 修复：更精确地清理代码块标记
-        // 移除开头的代码块标记（包括语言标识）
-        codeContent = codeContent.replace(/^```\w*\n?/, '');
-        // 移除结尾的代码块标记
-        codeContent = codeContent.replace(/\n?```$/, '');
-        // 移除中间的代码块标记（如果有多行）
-        codeContent = codeContent.replace(/\n```\w*\n/g, '\n');
-        codeContent = codeContent.replace(/\n```\n/g, '\n');
-        
-        // 清理多余的换行符
-        codeContent = codeContent.replace(/\n{3,}/g, '\n\n');
-        
-        return codeContent.trim();
-    }
-
-    /**
-     * 解码HTML实体
-     * @param {string} text - 包含HTML实体的文本
-     * @returns {string} 解码后的文本
-     */
-    decodeHtmlEntities(text) {
-        this._ensureInitialized(); // 确保依赖已初始化
-        // 修复：改进HTML实体解码
-        try {
-            // 首先处理QQ思维导图特有的实体
-            let decodedText = text
-                .replace(/&nbsp;/g, ' ')  // 空格
-                .replace(/&lt;/g, '<')    // 小于号
-                .replace(/&gt;/g, '>')    // 大于号
-                .replace(/&amp;/g, '&')   // 和号
-                .replace(/&quot;/g, '"')  // 双引号
-                .replace(/&#39;/g, "'");  // 单引号
-            
-            // 处理十进制HTML实体（包括中文字符）
-            decodedText = decodedText.replace(/&#(\d+);/g, (match, dec) => {
-                return String.fromCharCode(parseInt(dec, 10));
-            });
-            
-            // 处理十六进制HTML实体
-            decodedText = decodedText.replace(/&#x([0-9a-fA-F]+);/g, (match, hex) => {
-                return String.fromCharCode(parseInt(hex, 16));
-            });
-            
-            return decodedText;
-        } catch (error) {
-            // 回退到手动解码常见实体
-            return text
-                .replace(/&amp;/g, '&')
-                .replace(/&lt;/g, '<')
-                .replace(/&gt;/g, '>')
-                .replace(/&quot;/g, '"')
-                .replace(/&#39;/g, "'")
-                .replace(/&nbsp;/g, ' ');
-        }
+        return this.codeBlockHandler.convertCodeBlock(node, this.richTextFormatter);
     }
 
     /**
@@ -1954,62 +1994,13 @@ class QQToMarkdownConverter {
     }
 
     /**
-     * 转换注释HTML为纯文本 - 使用 QQMindMapParser 的方法
+     * 转换注释HTML为纯文本 - 使用 HtmlUtils
      * @param {string} html - HTML内容
      * @returns {string} 纯文本内容
      */
     convertNoteHtmlToPlainText(html) {
         this._ensureInitialized(); // 确保依赖已初始化
-        
-        // 优先使用注入的 QQMindMapParser
-        if (this.qqParser && typeof this.qqParser.convertNoteHtmlToPlainText === 'function') {
-            return this.qqParser.convertNoteHtmlToPlainText(html);
-        }
-        
-        // 降级到原始实现
-        try {
-            // 在Node.js环境中使用jsdom
-            if (typeof window === 'undefined' || !window.DOMParser) {
-                // 使用简化的HTML解析
-                return this.simpleHtmlToText(html);
-            }
-            
-            const doc = new DOMParser().parseFromString(html, 'text/html');
-            doc.querySelectorAll('br').forEach(br => br.replaceWith('\n'));
-            return doc.body.textContent || '';
-        } catch (error) {
-            console.log('DOMParser failed, using fallback:', error.message);
-            return this.simpleHtmlToText(html);
-        }
-    }
-
-    /**
-     * 简化的HTML到文本转换
-     * @param {string} html - HTML内容
-     * @returns {string} 纯文本内容
-     */
-    simpleHtmlToText(html) {
-        this._ensureInitialized(); // 确保依赖已初始化
-        if (!html) return '';
-        
-        let text = html;
-        
-        // 移除HTML标签，但保留内容
-        text = text.replace(/<br\s*\/?>/gi, '\n');
-        text = text.replace(/<\/?p[^>]*>/gi, '\n');
-        text = text.replace(/<\/?div[^>]*>/gi, '\n');
-        text = text.replace(/<\/?span[^>]*>/gi, '');
-        text = text.replace(/<\/?code[^>]*>/gi, '');
-        text = text.replace(/<\/?pre[^>]*>/gi, '');
-        
-        // 解码HTML实体
-        text = this.decodeHtmlEntities(text);
-        
-        // 修复：更精确地处理空格和换行符，但保留原始格式
-        // 将多个连续的换行符合并为两个换行符
-        text = text.replace(/\n{3,}/g, '\n\n');
-        
-        return text;
+        return this.htmlUtils.convertNoteHtmlToPlainText(html, this.qqParser);
     }
 }
 
@@ -3087,8 +3078,8 @@ if (typeof module !== 'undefined' && module.exports) {
     setTimeout(() => {
         if (modules.IndentManager) window.IndentManager = modules.IndentManager;
         if (modules.LinePreserver) window.LinePreserver = modules.LinePreserver;
-        if (modules.RichTextFormatter) window.RichTextFormatter = modules.RichTextFormatter;
         if (modules.QQMindMapParser) window.QQMindMapParser = modules.QQMindMapParser;
+        if (modules.RichTextFormatter) window.RichTextFormatter = modules.RichTextFormatter;
         if (modules.CodeBlockHandler) window.CodeBlockHandler = modules.CodeBlockHandler;
         if (modules.NodeManager) window.NodeManager = modules.NodeManager;
         if (modules.HtmlUtils) window.HtmlUtils = modules.HtmlUtils;
@@ -3132,6 +3123,7 @@ if (typeof module !== 'undefined' && module.exports) {
 
         initializeComponents() {
             try {
+                // 获取模块
                 const NotificationSystem = modules.NotificationSystem;
                 const QQMindMapParser = modules.QQMindMapParser;
                 const QQToMarkdownConverter = modules.QQToMarkdownConverter;
@@ -3140,6 +3132,9 @@ if (typeof module !== 'undefined' && module.exports) {
                 const IndentManager = modules.IndentManager;
                 const LinePreserver = modules.LinePreserver;
                 const RichTextFormatter = modules.RichTextFormatter;
+                const CodeBlockHandler = modules.CodeBlockHandler;
+                const NodeManager = modules.NodeManager;
+                const HtmlUtils = modules.HtmlUtils;
 
                 this.notifications = new NotificationSystem();
                 this.notifications.addStyles();
@@ -3150,7 +3145,12 @@ if (typeof module !== 'undefined' && module.exports) {
                 this.linePreserver = new LinePreserver(this.indentManager);
                 this.richTextFormatter = new RichTextFormatter(this.qqParser);
                 
-                // 创建转换器，传递依赖
+                // 创建共享模块实例
+                this.codeBlockHandler = new CodeBlockHandler(this.richTextFormatter, he);
+                this.nodeManager = new NodeManager();
+                this.htmlUtils = new HtmlUtils();
+                
+                // 创建转换器，传递共享模块依赖
                 this.qqToMdConverter = new QQToMarkdownConverter(this.qqParser, DOMPurify);
                 this.mdToQqConverter = new MarkdownToQQConverter(this.md, he);
                 this.interfaceManager = new InterfaceManager(this);
@@ -3353,6 +3353,9 @@ if (typeof module !== 'undefined' && module.exports) {
                 MarkdownToQQConverter: modules.MarkdownToQQConverter,
                 NotificationSystem: modules.NotificationSystem,
                 InterfaceManager: modules.InterfaceManager,
+                CodeBlockHandler: modules.CodeBlockHandler,
+                NodeManager: modules.NodeManager,
+                HtmlUtils: modules.HtmlUtils,
                 status: 'ready'
             };
             

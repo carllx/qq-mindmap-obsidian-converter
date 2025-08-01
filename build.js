@@ -27,8 +27,8 @@ function buildUserScript() {
     const modules = [
         { name: 'IndentManager', file: 'core/utils/indentManager.js' },
         { name: 'LinePreserver', file: 'core/utils/linePreserver.js' },
-        { name: 'RichTextFormatter', file: 'core/formatters/richText.js' },
         { name: 'QQMindMapParser', file: 'core/parsers/qqParser.js' },
+        { name: 'RichTextFormatter', file: 'core/formatters/richText.js' },
         { name: 'CodeBlockHandler', file: 'core/converters/shared/codeBlockHandler.js' },
         { name: 'NodeManager', file: 'core/converters/shared/nodeManager.js' },
         { name: 'HtmlUtils', file: 'core/converters/shared/htmlUtils.js' },
@@ -57,8 +57,8 @@ function buildUserScript() {
     moduleCode += `    setTimeout(() => {\n`;
     moduleCode += `        if (modules.IndentManager) window.IndentManager = modules.IndentManager;\n`;
     moduleCode += `        if (modules.LinePreserver) window.LinePreserver = modules.LinePreserver;\n`;
-    moduleCode += `        if (modules.RichTextFormatter) window.RichTextFormatter = modules.RichTextFormatter;\n`;
     moduleCode += `        if (modules.QQMindMapParser) window.QQMindMapParser = modules.QQMindMapParser;\n`;
+    moduleCode += `        if (modules.RichTextFormatter) window.RichTextFormatter = modules.RichTextFormatter;\n`;
     moduleCode += `        if (modules.CodeBlockHandler) window.CodeBlockHandler = modules.CodeBlockHandler;\n`;
     moduleCode += `        if (modules.NodeManager) window.NodeManager = modules.NodeManager;\n`;
     moduleCode += `        if (modules.HtmlUtils) window.HtmlUtils = modules.HtmlUtils;\n`;

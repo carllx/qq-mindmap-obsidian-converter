@@ -3,7 +3,7 @@
  * 负责处理富文本格式的转换和样式应用
  */
 class RichTextFormatter {
-    constructor() {
+    constructor(qqParser = null) {
         this.styleMappings = {
             // QQ到Markdown的样式映射
             qqToMd: {
@@ -29,6 +29,14 @@ class RichTextFormatter {
                 code: { fontFamily: 'monospace', backgroundColor: '#F0F0F0' }
             }
         };
+        
+        // 注入 QQMindMapParser 依赖
+        this.qqParser = qqParser;
+        
+        // 如果没有提供 qqParser，尝试从全局获取
+        if (!this.qqParser && typeof window !== 'undefined') {
+            this.qqParser = window.QQMindMapParser ? new window.QQMindMapParser() : null;
+        }
     }
 
     /**
@@ -264,11 +272,17 @@ class RichTextFormatter {
     }
 
     /**
-     * 提取QQ文本内容
+     * 提取QQ文本内容 - 使用 QQMindMapParser 的方法
      * @param {Object} titleObject - QQ标题对象
-     * @returns {string} 纯文本内容
+     * @returns {string} 提取的文本内容
      */
     extractQQTextContent(titleObject) {
+        // 优先使用注入的 QQMindMapParser
+        if (this.qqParser && typeof this.qqParser.extractTextContent === 'function') {
+            return this.qqParser.extractTextContent(titleObject);
+        }
+        
+        // 降级到原始实现
         if (typeof titleObject === 'string') {
             return titleObject;
         }
@@ -283,11 +297,17 @@ class RichTextFormatter {
     }
 
     /**
-     * 提取QQ文本样式
+     * 提取QQ文本样式 - 使用 QQMindMapParser 的方法
      * @param {Object} titleObject - QQ标题对象
      * @returns {Object} 样式对象
      */
     extractQQTextStyles(titleObject) {
+        // 优先使用注入的 QQMindMapParser
+        if (this.qqParser && typeof this.qqParser.extractTextStyles === 'function') {
+            return this.qqParser.extractTextStyles(titleObject);
+        }
+        
+        // 降级到原始实现
         const styles = {};
         
         if (!titleObject?.children) {

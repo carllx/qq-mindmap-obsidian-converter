@@ -113,8 +113,11 @@ class CodeBlockHandler {
      * @returns {string} 处理后的HTML
      */
     processCodeLine(line) {
+        // 修复：先处理缩进，将制表符转换为空格
+        let processedLine = line.replace(/\t/g, '    '); // 将制表符转换为4个空格
+        
         // 使用he库进行HTML实体编码
-        const escapedLine = this.he.encode(line, {
+        const escapedLine = this.he.encode(processedLine, {
             'useNamedReferences': false,
             'allowUnsafeSymbols': false,
             'decimal': false // 使用十六进制格式
@@ -146,16 +149,16 @@ class CodeBlockHandler {
         // 处理换行符
         result = result.replace(/\n/g, '\\n');
         result = result.replace(/\r/g, '\\r');
-        result = result.replace(/\t/g, '\\t');
+        // 注意：制表符已经在前面转换为空格，这里不需要再处理
 
         // 添加换行标签
         return result + '<br>';
     }
 
     /**
-     * 转换代码块节点为Markdown (从 qq2md.js 提取)
+     * 转换代码块节点 (从 qq2md.js 提取)
      * @param {Object} node - 代码块节点
-     * @param {object} richTextFormatter - 富文本格式化器
+     * @param {Object} richTextFormatter - 富文本格式化器
      * @returns {string} Markdown文本
      */
     convertCodeBlock(node, richTextFormatter) {
@@ -163,7 +166,20 @@ class CodeBlockHandler {
         let markdown = '';
 
         // 获取代码块标题（语言标识）
-        const titleText = richTextFormatter.convertRichTextToMarkdown(data.title).trim();
+        let titleText = '';
+        if (richTextFormatter && typeof richTextFormatter.convertRichTextToMarkdown === 'function') {
+            titleText = richTextFormatter.convertRichTextToMarkdown(data.title).trim();
+        } else {
+            // 降级处理：直接获取标题文本
+            if (typeof data.title === 'string') {
+                titleText = data.title;
+            } else if (data.title && typeof data.title === 'object') {
+                // 尝试从富文本对象中提取文本
+                titleText = this.extractTextFromRichText(data.title);
+            } else {
+                titleText = '';
+            }
+        }
         
         // 处理语言标识 - 避免重复的代码块标记
         let language = '';
@@ -184,11 +200,19 @@ class CodeBlockHandler {
         // 确保代码内容不包含代码块标记
         codeContent = this.cleanCodeBlockMarkers(codeContent);
 
+        // 修复：确保代码内容有正确的换行符
+        if (codeContent && !codeContent.endsWith('\n')) {
+            codeContent += '\n';
+        }
+
+        // 修复：确保代码内容开头没有多余的换行符
+        codeContent = codeContent.replace(/^\n+/, '');
+
         // 生成Markdown代码块 - 避免嵌套
         if (language && language !== '```' && language !== '') {
-            markdown += `\n\`\`\`${language}\n${codeContent}\n\`\`\`\n\n`;
+            markdown += `\n\`\`\`${language}\n${codeContent}\`\`\`\n\n`;
         } else {
-            markdown += `\n\`\`\`\n${codeContent}\n\`\`\`\n\n`;
+            markdown += `\n\`\`\`\n${codeContent}\`\`\`\n\n`;
         }
 
         return markdown;
@@ -208,13 +232,26 @@ class CodeBlockHandler {
         // 2. 清理代码块标记，但保留注释
         codeContent = this.cleanCodeBlockMarkers(codeContent);
         
-        // 3. 如果内容为空，尝试其他方法
+        // 3. 修复：处理换行符，将<br>标签转换为换行符
+        codeContent = codeContent.replace(/<br\s*\/?>/gi, '\n');
+        
+        // 4. 修复：处理制表符，将\t转换为空格
+        codeContent = codeContent.replace(/\\t/g, '    '); // 将制表符转换为4个空格
+        
+        // 5. 修复：确保换行符正确保留
+        // 将连续的换行符标准化为单个换行符
+        codeContent = codeContent.replace(/\n{2,}/g, '\n');
+        
+        // 6. 如果内容为空，尝试其他方法
         if (!codeContent.trim()) {
             // 回退到原有的pre/code标签解析
             const preCodeMatch = htmlContent.match(/<pre><code>([\s\S]*?)<\/code><\/pre>/);
             if (preCodeMatch) {
                 codeContent = this.decodeHtmlEntities(preCodeMatch[1]);
                 codeContent = this.cleanCodeBlockMarkers(codeContent);
+                codeContent = codeContent.replace(/<br\s*\/?>/gi, '\n');
+                codeContent = codeContent.replace(/\\t/g, '    ');
+                codeContent = codeContent.replace(/\n{2,}/g, '\n');
                 return codeContent;
             }
             
@@ -223,6 +260,9 @@ class CodeBlockHandler {
             if (codeMatch) {
                 codeContent = this.decodeHtmlEntities(codeMatch[1]);
                 codeContent = this.cleanCodeBlockMarkers(codeContent);
+                codeContent = codeContent.replace(/<br\s*\/?>/gi, '\n');
+                codeContent = codeContent.replace(/\\t/g, '    ');
+                codeContent = codeContent.replace(/\n{2,}/g, '\n');
                 return codeContent;
             }
             
@@ -231,6 +271,9 @@ class CodeBlockHandler {
             if (preMatch) {
                 codeContent = this.decodeHtmlEntities(preMatch[1]);
                 codeContent = this.cleanCodeBlockMarkers(codeContent);
+                codeContent = codeContent.replace(/<br\s*\/?>/gi, '\n');
+                codeContent = codeContent.replace(/\\t/g, '    ');
+                codeContent = codeContent.replace(/\n{2,}/g, '\n');
                 return codeContent;
             }
         }
@@ -248,9 +291,15 @@ class CodeBlockHandler {
         // 移除开头的代码块标记（包括语言标识）
         codeContent = codeContent.replace(/^```\w*\n?/, '');
         // 移除结尾的代码块标记
-        codeContent = codeContent.replace(/```\s*$/, '');
+        codeContent = codeContent.replace(/\n?```$/, '');
+        // 移除中间的代码块标记
+        codeContent = codeContent.replace(/\n```\w*\n/g, '\n');
+        codeContent = codeContent.replace(/\n```\n/g, '\n');
         
-        return codeContent;
+        // 清理多余的换行符
+        codeContent = codeContent.replace(/\n{3,}/g, '\n\n');
+        
+        return codeContent.trim();
     }
 
     /**
@@ -269,16 +318,56 @@ class CodeBlockHandler {
      * @returns {string} 纯文本内容
      */
     simpleHtmlToText(html) {
-        // 创建临时DOM元素来解析HTML
-        const tempDiv = document.createElement('div');
-        tempDiv.innerHTML = html;
+        // 修复：统一使用字符串处理，避免DOM解析丢失换行符
+        let text = html;
         
-        // 提取文本内容
-        let text = tempDiv.textContent || tempDiv.innerText || '';
+        // 移除HTML标签，但保留换行符
+        text = text.replace(/<br\s*\/?>/gi, '\n');
+        text = text.replace(/<\/?p[^>]*>/gi, '\n');
+        text = text.replace(/<\/?div[^>]*>/gi, '\n');
+        text = text.replace(/<\/?span[^>]*>/gi, '');
+        text = text.replace(/<\/?code[^>]*>/gi, '');
+        text = text.replace(/<\/?pre[^>]*>/gi, '');
         
-        // 清理多余的空白字符
-        text = text.replace(/\s+/g, ' ').trim();
+        // 解码HTML实体
+        text = this.decodeHtmlEntities(text);
+        
+        // 清理多余的换行符，但保持基本结构
+        text = text.replace(/\n{3,}/g, '\n\n');
         
         return text;
     }
+
+    /**
+     * 从富文本对象中提取文本内容
+     * @param {Object} richText - 富文本对象
+     * @returns {string} 提取的文本
+     */
+    extractTextFromRichText(richText) {
+        if (!richText) return '';
+        
+        if (typeof richText === 'string') {
+            return richText;
+        }
+        
+        if (richText.children && Array.isArray(richText.children)) {
+            return richText.children.map(child => {
+                if (typeof child === 'string') {
+                    return child;
+                } else if (child && typeof child === 'object') {
+                    return child.text || this.extractTextFromRichText(child);
+                }
+                return '';
+            }).join('');
+        }
+        
+        return richText.text || '';
+    }
+}
+
+// 导出模块
+if (typeof module !== 'undefined' && module.exports) {
+    module.exports = CodeBlockHandler;
+} else if (typeof window !== 'undefined') {
+    window.CodeBlockHandler = CodeBlockHandler;
 } 

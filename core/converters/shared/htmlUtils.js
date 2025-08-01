@@ -69,6 +69,9 @@ class HtmlUtils {
         // 将多个连续的换行符合并为两个换行符
         text = text.replace(/\n{3,}/g, '\n\n');
         
+        // 修复：处理制表符，将\t转换为空格
+        text = text.replace(/\\t/g, '    '); // 将制表符转换为4个空格
+        
         return text;
     }
 
@@ -94,10 +97,25 @@ class HtmlUtils {
             
             const doc = new DOMParser().parseFromString(html, 'text/html');
             doc.querySelectorAll('br').forEach(br => br.replaceWith('\n'));
-            return doc.body.textContent || '';
+            let text = doc.body.textContent || '';
+            
+            // 修复：处理制表符，将\t转换为空格
+            text = text.replace(/\\t/g, '    '); // 将制表符转换为4个空格
+            
+            return text;
         } catch (error) {
             console.log('DOMParser failed, using fallback:', error.message);
-            return this.simpleHtmlToText(html);
+            let text = this.simpleHtmlToText(html);
+            // 修复：处理制表符，将\t转换为空格
+            text = text.replace(/\\t/g, '    '); // 将制表符转换为4个空格
+            return text;
         }
     }
+}
+
+// 导出模块
+if (typeof module !== 'undefined' && module.exports) {
+    module.exports = HtmlUtils;
+} else if (typeof window !== 'undefined') {
+    window.HtmlUtils = HtmlUtils;
 } 

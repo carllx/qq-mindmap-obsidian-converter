@@ -219,12 +219,20 @@ if (typeof module !== 'undefined' && module.exports) {
  * 专门处理 Markdown 转换过程中的空行和格式保持
  */
 class LinePreserver {
-    constructor() {
+    constructor(indentManager = null) {
         this.config = {
             preserveEmptyLines: true,    // 是否保持空行
             normalizeSpacing: true,      // 是否标准化间距
             maxConsecutiveEmptyLines: 2  // 最大连续空行数
         };
+        
+        // 注入 IndentManager 依赖
+        this.indentManager = indentManager;
+        
+        // 如果没有提供 IndentManager，尝试从全局获取
+        if (!this.indentManager && typeof window !== 'undefined') {
+            this.indentManager = window.IndentManager ? new window.IndentManager() : null;
+        }
     }
 
     /**
@@ -257,7 +265,7 @@ class LinePreserver {
     }
 
     /**
-     * 计算缩进级别
+     * 计算缩进级别 - 使用 IndentManager 的方法
      * @param {string} line - 行内容
      * @returns {number} 缩进级别
      */
@@ -265,6 +273,12 @@ class LinePreserver {
         const match = line.match(/^(\s*)/);
         if (!match) return 0;
         
+        // 优先使用注入的 IndentManager
+        if (this.indentManager && typeof this.indentManager.calculateIndentLevel === 'function') {
+            return this.indentManager.calculateIndentLevel(match[1]);
+        }
+        
+        // 降级到简单计算
         const indentText = match[1];
         return (indentText.match(/\t/g) || []).length;
     }
@@ -403,7 +417,7 @@ if (typeof module !== 'undefined' && module.exports) {
  * 负责处理富文本格式的转换和样式应用
  */
 class RichTextFormatter {
-    constructor() {
+    constructor(qqParser = null) {
         this.styleMappings = {
             // QQ到Markdown的样式映射
             qqToMd: {
@@ -429,6 +443,14 @@ class RichTextFormatter {
                 code: { fontFamily: 'monospace', backgroundColor: '#F0F0F0' }
             }
         };
+        
+        // 注入 QQMindMapParser 依赖
+        this.qqParser = qqParser;
+        
+        // 如果没有提供 qqParser，尝试从全局获取
+        if (!this.qqParser && typeof window !== 'undefined') {
+            this.qqParser = window.QQMindMapParser ? new window.QQMindMapParser() : null;
+        }
     }
 
     /**
@@ -664,11 +686,17 @@ class RichTextFormatter {
     }
 
     /**
-     * 提取QQ文本内容
+     * 提取QQ文本内容 - 使用 QQMindMapParser 的方法
      * @param {Object} titleObject - QQ标题对象
-     * @returns {string} 纯文本内容
+     * @returns {string} 提取的文本内容
      */
     extractQQTextContent(titleObject) {
+        // 优先使用注入的 QQMindMapParser
+        if (this.qqParser && typeof this.qqParser.extractTextContent === 'function') {
+            return this.qqParser.extractTextContent(titleObject);
+        }
+        
+        // 降级到原始实现
         if (typeof titleObject === 'string') {
             return titleObject;
         }
@@ -683,11 +711,17 @@ class RichTextFormatter {
     }
 
     /**
-     * 提取QQ文本样式
+     * 提取QQ文本样式 - 使用 QQMindMapParser 的方法
      * @param {Object} titleObject - QQ标题对象
      * @returns {Object} 样式对象
      */
     extractQQTextStyles(titleObject) {
+        // 优先使用注入的 QQMindMapParser
+        if (this.qqParser && typeof this.qqParser.extractTextStyles === 'function') {
+            return this.qqParser.extractTextStyles(titleObject);
+        }
+        
+        // 降级到原始实现
         const styles = {};
         
         if (!titleObject?.children) {
@@ -955,6 +989,547 @@ if (typeof window !== 'undefined') {
         return QQMindMapParser;
     });
 
+    define('CodeBlockHandler', function() {
+        /**
+ * 代码块处理器
+ * 负责处理代码块的双向转换功能
+ */
+
+class CodeBlockHandler {
+    /**
+     * @param {object} richTextFormatter - 富文本格式化器
+     * @param {object} he - he库实例
+     */
+    constructor(richTextFormatter, he) {
+        if (!he || typeof he.encode !== 'function') {
+            throw new Error("CodeBlockHandler requires the 'he' library, but it was not provided or is invalid.");
+        }
+        this.richTextFormatter = richTextFormatter;
+        this.he = he;
+        
+        // 代码块标签定义
+        this.CODE_BLOCK_LABEL = {
+            id: 'qq-mind-map-code-block-label',
+            text: 'code-block',
+            backgroundColor: 'rgb(172, 226, 197)',
+            color: '#000000'
+        };
+    }
+
+    /**
+     * 生成唯一节点ID
+     * @returns {string} 唯一ID
+     */
+    generateNodeId() {
+        return 'node_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+    }
+
+    /**
+     * 创建代码块节点 (从 md2qq.js 提取)
+     * @param {Array} codeLines - 代码行数组
+     * @param {string} language - 编程语言
+     * @param {object} markdownIt - markdown-it实例
+     * @returns {Object} 代码块节点
+     */
+    createCodeBlockNode(codeLines, language, markdownIt) {
+        // 生成QQ思维导图期望的HTML格式
+        const title = language ? `\`\`\`${language}` : '```';
+        
+        // 将代码行转换为QQ思维导图期望的HTML格式
+        const htmlContent = this.convertCodeLinesToQQHtml(codeLines, language);
+        
+        return {
+            id: this.generateNodeId(),
+            title: this.richTextFormatter.format(title, markdownIt),
+            labels: [this.CODE_BLOCK_LABEL],
+            notes: { content: htmlContent },
+            collapse: false,
+            children: { attached: [] }
+        };
+    }
+
+    /**
+     * 将代码行转换为QQ思维导图期望的HTML格式 (从 md2qq.js 提取)
+     * @param {Array} codeLines - 代码行数组
+     * @param {string} language - 编程语言
+     * @returns {string} QQ思维导图格式的HTML
+     */
+    convertCodeLinesToQQHtml(codeLines, language = '') {
+        const paragraphs = [];
+        let currentParagraphLines = [];
+
+        const flushParagraph = () => {
+            if (currentParagraphLines.length > 0) {
+                const paragraphContent = currentParagraphLines.map(line => this.processCodeLine(line)).join('');
+                paragraphs.push(`<p>${paragraphContent}</p>`);
+                currentParagraphLines = [];
+            }
+        };
+
+        // 处理代码行，正确处理空行
+        for (let i = 0; i < codeLines.length; i++) {
+            const line = codeLines[i];
+            
+            if (line.trim() === '') {
+                // 空行：结束当前段落，添加空段落
+                flushParagraph();
+                paragraphs.push('<p><br></p>');
+            } else {
+                // 非空行：添加到当前段落
+                currentParagraphLines.push(line);
+            }
+        }
+        
+        // 处理最后一个段落
+        flushParagraph();
+
+        // 添加语言标识到第一个段落
+        if (paragraphs.length > 0) {
+            const languagePrefix = language ? `\`\`\`${language}<br>` : '```<br>';
+            paragraphs[0] = paragraphs[0].replace('<p>', `<p>${languagePrefix}`);
+        } else {
+            // 如果没有内容，创建默认段落
+            const languagePrefix = language ? `\`\`\`${language}<br>` : '```<br>';
+            paragraphs.push(`<p>${languagePrefix}</p>`);
+        }
+        
+        // 添加结束标记
+        paragraphs.push('<p>```</p>');
+
+        return paragraphs.join('\n');
+    }
+
+    /**
+     * 处理单行代码，包括缩进和特殊字符 (从 md2qq.js 提取)
+     * @param {string} line - 原始代码行
+     * @returns {string} 处理后的HTML
+     */
+    processCodeLine(line) {
+        // 使用he库进行HTML实体编码
+        const escapedLine = this.he.encode(line, {
+            'useNamedReferences': false,
+            'allowUnsafeSymbols': false,
+            'decimal': false // 使用十六进制格式
+        });
+
+        // 将HTML实体转换为Unicode转义格式以匹配QQ思维导图期望
+        let result = escapedLine.replace(/&#x([0-9a-fA-F]+);/g, (match, hex) => {
+            return `\\u{${hex.toUpperCase()}}`;
+        });
+
+        // 处理特殊字符
+        result = result.replace(/&lt;/g, '\\u{3C}');
+        result = result.replace(/&gt;/g, '\\u{3E}');
+        result = result.replace(/&amp;/g, '\\u{26}');
+        result = result.replace(/&quot;/g, '\\u{22}');
+        result = result.replace(/&#39;/g, '\\u{27}');
+
+        // 修复：将双反斜杠转换为单反斜杠以匹配QQ思维导图期望
+        result = result.replace(/\\\\u\{/g, '\\u{');
+        
+        // 修复：将Unicode转义转换为实际字符以匹配QQ思维导图期望
+        result = result.replace(/\\u\{([0-9A-F]+)\}/g, (match, hex) => {
+            return String.fromCodePoint(parseInt(hex, 16));
+        });
+
+        // 处理缩进：将前导空格转换为&nbsp;，使用双重转义
+        result = result.replace(/^ +/g, (spaces) => '&amp;nbsp;'.repeat(spaces.length));
+
+        // 处理换行符
+        result = result.replace(/\n/g, '\\n');
+        result = result.replace(/\r/g, '\\r');
+        result = result.replace(/\t/g, '\\t');
+
+        // 添加换行标签
+        return result + '<br>';
+    }
+
+    /**
+     * 转换代码块节点为Markdown (从 qq2md.js 提取)
+     * @param {Object} node - 代码块节点
+     * @param {object} richTextFormatter - 富文本格式化器
+     * @returns {string} Markdown文本
+     */
+    convertCodeBlock(node, richTextFormatter) {
+        const data = node.data || node;
+        let markdown = '';
+
+        // 获取代码块标题（语言标识）
+        const titleText = richTextFormatter.convertRichTextToMarkdown(data.title).trim();
+        
+        // 处理语言标识 - 避免重复的代码块标记
+        let language = '';
+        if (titleText.startsWith('```')) {
+            // 如果标题已经是代码块格式，提取语言
+            language = titleText.replace(/^```/, '').trim();
+        } else {
+            // 否则使用标题作为语言
+            language = titleText;
+        }
+        
+        // 获取代码内容
+        let codeContent = '';
+        if (data.notes?.content) {
+            codeContent = this.extractCodeFromNotes(data.notes.content);
+        }
+
+        // 确保代码内容不包含代码块标记
+        codeContent = this.cleanCodeBlockMarkers(codeContent);
+
+        // 生成Markdown代码块 - 避免嵌套
+        if (language && language !== '```' && language !== '') {
+            markdown += `\n\`\`\`${language}\n${codeContent}\n\`\`\`\n\n`;
+        } else {
+            markdown += `\n\`\`\`\n${codeContent}\n\`\`\`\n\n`;
+        }
+
+        return markdown;
+    }
+
+    /**
+     * 从注释中提取代码内容 (从 qq2md.js 提取)
+     * @param {string} htmlContent - HTML内容
+     * @returns {string} 代码内容
+     */
+    extractCodeFromNotes(htmlContent) {
+        // 修复：使用更简单直接的方法解析HTML内容
+        
+        // 1. 直接解析HTML内容，提取所有文本
+        let codeContent = this.simpleHtmlToText(htmlContent);
+        
+        // 2. 清理代码块标记，但保留注释
+        codeContent = this.cleanCodeBlockMarkers(codeContent);
+        
+        // 3. 如果内容为空，尝试其他方法
+        if (!codeContent.trim()) {
+            // 回退到原有的pre/code标签解析
+            const preCodeMatch = htmlContent.match(/<pre><code>([\s\S]*?)<\/code><\/pre>/);
+            if (preCodeMatch) {
+                codeContent = this.decodeHtmlEntities(preCodeMatch[1]);
+                codeContent = this.cleanCodeBlockMarkers(codeContent);
+                return codeContent;
+            }
+            
+            // 尝试从code标签中提取
+            const codeMatch = htmlContent.match(/<code>([\s\S]*?)<\/code>/);
+            if (codeMatch) {
+                codeContent = this.decodeHtmlEntities(codeMatch[1]);
+                codeContent = this.cleanCodeBlockMarkers(codeContent);
+                return codeContent;
+            }
+            
+            // 尝试从pre标签中提取
+            const preMatch = htmlContent.match(/<pre>([\s\S]*?)<\/pre>/);
+            if (preMatch) {
+                codeContent = this.decodeHtmlEntities(preMatch[1]);
+                codeContent = this.cleanCodeBlockMarkers(codeContent);
+                return codeContent;
+            }
+        }
+        
+        return codeContent;
+    }
+
+    /**
+     * 清理代码内容中的代码块标记 (从 qq2md.js 提取)
+     * @param {string} codeContent - 代码内容
+     * @returns {string} 清理后的代码内容
+     */
+    cleanCodeBlockMarkers(codeContent) {
+        // 修复：更精确地清理代码块标记
+        // 移除开头的代码块标记（包括语言标识）
+        codeContent = codeContent.replace(/^```\w*\n?/, '');
+        // 移除结尾的代码块标记
+        codeContent = codeContent.replace(/```\s*$/, '');
+        
+        return codeContent;
+    }
+
+    /**
+     * 解码HTML实体 (从 qq2md.js 提取)
+     * @param {string} text - 包含HTML实体的文本
+     * @returns {string} 解码后的文本
+     */
+    decodeHtmlEntities(text) {
+        // 使用he库解码HTML实体
+        return this.he.decode(text);
+    }
+
+    /**
+     * 简单的HTML到文本转换 (从 qq2md.js 提取)
+     * @param {string} html - HTML内容
+     * @returns {string} 纯文本内容
+     */
+    simpleHtmlToText(html) {
+        // 创建临时DOM元素来解析HTML
+        const tempDiv = document.createElement('div');
+        tempDiv.innerHTML = html;
+        
+        // 提取文本内容
+        let text = tempDiv.textContent || tempDiv.innerText || '';
+        
+        // 清理多余的空白字符
+        text = text.replace(/\s+/g, ' ').trim();
+        
+        return text;
+    }
+} 
+        return CodeBlockHandler;
+    });
+
+    define('NodeManager', function() {
+        /**
+ * 节点管理器
+ * 负责处理节点的创建、查找、附加等操作
+ */
+
+class NodeManager {
+    /**
+     * 生成唯一节点ID
+     * @returns {string} 唯一ID
+     */
+    generateNodeId() {
+        return 'node_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+    }
+
+    /**
+     * 创建节点 (从 md2qq.js 提取)
+     * @param {Object} lineInfo - 行信息
+     * @param {Object} richTextFormatter - 富文本格式化器
+     * @param {Object} markdownIt - markdown-it实例
+     * @param {Object} labels - 标签定义
+     * @returns {Object} 节点数据
+     */
+    createNode(lineInfo, richTextFormatter, markdownIt, labels) {
+        const nodeId = this.generateNodeId();
+        
+        if (lineInfo.type === 'header') {
+            return {
+                id: nodeId,
+                title: richTextFormatter.format(lineInfo.content, markdownIt),
+                labels: [labels.HEADER_LABEL],
+                collapse: false,
+                children: { attached: [] }
+            };
+        } else if (lineInfo.type === 'divider') {
+            return {
+                id: nodeId,
+                title: '---',
+                labels: [labels.DIVIDER_LABEL],
+                collapse: false,
+                children: { attached: [] }
+            };
+        } else if (lineInfo.type === 'image') {
+            const altText = lineInfo.alt || 'image';
+            const imageUrl = lineInfo.url;
+            
+            return { 
+                id: nodeId,
+                title: '', 
+                images: [{ 
+                    id: this.generateNodeId(), 
+                    w: 80,
+                    h: 80,
+                    ow: 80,
+                    oh: 80,
+                    url: imageUrl
+                }], 
+                notes: { 
+                    content: `<p>Image Alt: ${altText}</p>` 
+                },
+                collapse: false,
+                children: { attached: [] } 
+            };
+        } else {
+            const content = lineInfo.content.replace(/^(\s*[-*+>]\s*)/, '');
+            return { 
+                id: nodeId,
+                title: richTextFormatter.format(content, markdownIt), 
+                collapse: false,
+                children: { attached: [] },
+                originalIndent: lineInfo.indent
+            };
+        }
+    }
+
+    /**
+     * 查找父节点 (从 md2qq.js 提取)
+     * @param {Array} stack - 节点栈
+     * @param {Object} lineInfo - 行信息
+     * @returns {Object} 父节点信息
+     */
+    findParentNode(stack, lineInfo) {
+        let parentIndex = -1;
+        let parentNode = null;
+        
+        // 从栈顶开始查找合适的父节点
+        for (let i = stack.length - 1; i >= 0; i--) {
+            const stackItem = stack[i];
+            
+            // 如果当前是标题
+            if (lineInfo.headerLevel > 0) {
+                // 标题的父节点应该是层级更小的标题
+                if (stackItem.headerLevel > 0 && lineInfo.headerLevel > stackItem.headerLevel) {
+                    parentIndex = i;
+                    parentNode = stackItem.node;
+                    break;
+                }
+            } else {
+                // 非标题内容的父节点判断
+                // 1. 如果当前行缩进级别大于栈中节点的缩进级别，则可以作为子节点
+                if (lineInfo.indent > stackItem.indentLevel) {
+                    parentIndex = i;
+                    parentNode = stackItem.node;
+                    break;
+                }
+                // 2. 如果当前行缩进级别等于栈中节点的缩进级别，且栈中节点是标题，则可以作为标题的内容
+                if (lineInfo.indent === stackItem.indentLevel && stackItem.headerLevel > 0) {
+                    parentIndex = i;
+                    parentNode = stackItem.node;
+                    break;
+                }
+                // 3. 如果当前行缩进级别等于栈中节点的缩进级别，且都是列表项，则可以作为同级节点
+                if (lineInfo.indent === stackItem.indentLevel && lineInfo.type === 'list' && stackItem.type === 'list') {
+                    // 同级列表项，弹出当前父节点，寻找更上层的父节点
+                    continue;
+                }
+                // 4. 如果当前行缩进级别等于栈中节点的缩进级别，且都是普通文本，则可以作为同级节点
+                if (lineInfo.indent === stackItem.indentLevel && lineInfo.type === 'text' && stackItem.type === 'text') {
+                    // 同级文本，弹出当前父节点，寻找更上层的父节点
+                    continue;
+                }
+            }
+        }
+        
+        return { parentIndex, parentNode };
+    }
+
+    /**
+     * 附加节点 (从 md2qq.js 提取)
+     * @param {Object} newNode - 新节点
+     * @param {Object} parentNode - 父节点
+     * @param {Array} forest - 根节点数组
+     */
+    attachNode(newNode, parentNode, forest) {
+        if (parentNode) {
+            if (!parentNode.children) parentNode.children = { attached: [] };
+            if (!parentNode.children.attached) parentNode.children.attached = [];
+            parentNode.children.attached.push(newNode);
+        } else {
+            forest.push({ type: 5, data: newNode });
+        }
+    }
+} 
+        return NodeManager;
+    });
+
+    define('HtmlUtils', function() {
+        /**
+ * HTML工具类
+ * 负责处理HTML解码、文本转换等操作
+ */
+
+class HtmlUtils {
+    /**
+     * 解码HTML实体 (从 qq2md.js 提取)
+     * @param {string} text - 包含HTML实体的文本
+     * @returns {string} 解码后的文本
+     */
+    decodeHtmlEntities(text) {
+        // 修复：改进HTML实体解码
+        try {
+            // 首先处理QQ思维导图特有的实体
+            let decodedText = text
+                .replace(/&nbsp;/g, ' ')  // 空格
+                .replace(/&lt;/g, '<')    // 小于号
+                .replace(/&gt;/g, '>')    // 大于号
+                .replace(/&amp;/g, '&')   // 和号
+                .replace(/&quot;/g, '"')  // 双引号
+                .replace(/&#39;/g, "'");  // 单引号
+            
+            // 处理十进制HTML实体（包括中文字符）
+            decodedText = decodedText.replace(/&#(\d+);/g, (match, dec) => {
+                return String.fromCharCode(parseInt(dec, 10));
+            });
+            
+            // 处理十六进制HTML实体
+            decodedText = decodedText.replace(/&#x([0-9a-fA-F]+);/g, (match, hex) => {
+                return String.fromCharCode(parseInt(hex, 16));
+            });
+            
+            return decodedText;
+        } catch (error) {
+            // 回退到手动解码常见实体
+            return text
+                .replace(/&amp;/g, '&')
+                .replace(/&lt;/g, '<')
+                .replace(/&gt;/g, '>')
+                .replace(/&quot;/g, '"')
+                .replace(/&#39;/g, "'")
+                .replace(/&nbsp;/g, ' ');
+        }
+    }
+
+    /**
+     * 简化的HTML到文本转换 (从 qq2md.js 提取)
+     * @param {string} html - HTML内容
+     * @returns {string} 纯文本内容
+     */
+    simpleHtmlToText(html) {
+        if (!html) return '';
+        
+        let text = html;
+        
+        // 移除HTML标签，但保留内容
+        text = text.replace(/<br\s*\/?>/gi, '\n');
+        text = text.replace(/<\/?p[^>]*>/gi, '\n');
+        text = text.replace(/<\/?div[^>]*>/gi, '\n');
+        text = text.replace(/<\/?span[^>]*>/gi, '');
+        text = text.replace(/<\/?code[^>]*>/gi, '');
+        text = text.replace(/<\/?pre[^>]*>/gi, '');
+        
+        // 解码HTML实体
+        text = this.decodeHtmlEntities(text);
+        
+        // 修复：更精确地处理空格和换行符，但保留原始格式
+        // 将多个连续的换行符合并为两个换行符
+        text = text.replace(/\n{3,}/g, '\n\n');
+        
+        return text;
+    }
+
+    /**
+     * 转换注释HTML为纯文本 (从 qq2md.js 提取)
+     * @param {string} html - HTML内容
+     * @param {Object} qqParser - QQ解析器实例
+     * @returns {string} 纯文本内容
+     */
+    convertNoteHtmlToPlainText(html, qqParser) {
+        // 优先使用注入的 QQMindMapParser
+        if (qqParser && typeof qqParser.convertNoteHtmlToPlainText === 'function') {
+            return qqParser.convertNoteHtmlToPlainText(html);
+        }
+        
+        // 降级到原始实现
+        try {
+            // 在Node.js环境中使用jsdom
+            if (typeof window === 'undefined' || !window.DOMParser) {
+                // 使用简化的HTML解析
+                return this.simpleHtmlToText(html);
+            }
+            
+            const doc = new DOMParser().parseFromString(html, 'text/html');
+            doc.querySelectorAll('br').forEach(br => br.replaceWith('\n'));
+            return doc.body.textContent || '';
+        } catch (error) {
+            console.log('DOMParser failed, using fallback:', error.message);
+            return this.simpleHtmlToText(html);
+        }
+    }
+} 
+        return HtmlUtils;
+    });
+
     define('QQToMarkdownConverter', function() {
         /**
  * QQ思维导图转Markdown转换器
@@ -984,10 +1559,19 @@ if (typeof window !== 'undefined') {
 }
 
 class QQToMarkdownConverter {
-    constructor() {
+    constructor(qqParser = null) {
         this.PRESENTATION_NODE_TITLE = 'Presentation';
         // 延迟初始化依赖，避免模块未完全加载时出错
         this._initialized = false;
+        
+        // 注入 QQMindMapParser 依赖
+        this.qqParser = qqParser;
+        
+        // 如果没有提供 qqParser，尝试从全局获取
+        if (!this.qqParser && typeof window !== 'undefined') {
+            this.qqParser = window.QQMindMapParser ? new window.QQMindMapParser() : null;
+        }
+        
         this._initDependencies();
     }
 
@@ -1370,12 +1954,19 @@ class QQToMarkdownConverter {
     }
 
     /**
-     * 转换注释HTML为纯文本
+     * 转换注释HTML为纯文本 - 使用 QQMindMapParser 的方法
      * @param {string} html - HTML内容
      * @returns {string} 纯文本内容
      */
     convertNoteHtmlToPlainText(html) {
         this._ensureInitialized(); // 确保依赖已初始化
+        
+        // 优先使用注入的 QQMindMapParser
+        if (this.qqParser && typeof this.qqParser.convertNoteHtmlToPlainText === 'function') {
+            return this.qqParser.convertNoteHtmlToPlainText(html);
+        }
+        
+        // 降级到原始实现
         try {
             // 在Node.js环境中使用jsdom
             if (typeof window === 'undefined' || !window.DOMParser) {
@@ -1440,17 +2031,23 @@ if (typeof module !== 'undefined' && module.exports) {
 // 导入依赖 - 修复浏览器环境下的模块加载问题
 let RichTextFormatter;
 let IndentManager;
+let CodeBlockHandler;
+let NodeManager;
 
 // 在浏览器环境中，直接使用全局对象，不尝试require
 if (typeof window !== 'undefined') {
     // 浏览器环境：使用全局对象
     RichTextFormatter = window.RichTextFormatter;
     IndentManager = window.IndentManager;
+    CodeBlockHandler = window.CodeBlockHandler;
+    NodeManager = window.NodeManager;
 } else if (typeof require !== 'undefined') {
     // Node.js 环境：使用require
     try {
         RichTextFormatter = require('../formatters/richText.js');
         IndentManager = require('../utils/indentManager.js');
+        CodeBlockHandler = require('./shared/codeBlockHandler.js');
+        NodeManager = require('./shared/nodeManager.js');
     } catch (e) {
         console.warn('Node.js环境下模块加载失败:', e.message);
     }
@@ -1509,6 +2106,21 @@ class MarkdownToQQConverter {
                 
                 this.richTextFormatter = new window.RichTextFormatter();
                 this.indentManager = new window.IndentManager();
+                
+                // 初始化代码块处理器
+                if (typeof window.CodeBlockHandler !== 'undefined') {
+                    this.codeBlockHandler = new window.CodeBlockHandler(this.richTextFormatter, this.he);
+                } else {
+                    throw new Error('CodeBlockHandler 未加载，无法初始化 MarkdownToQQConverter');
+                }
+                
+                // 初始化节点管理器
+                if (typeof window.NodeManager !== 'undefined') {
+                    this.nodeManager = new window.NodeManager();
+                } else {
+                    throw new Error('NodeManager 未加载，无法初始化 MarkdownToQQConverter');
+                }
+                
                 this._initialized = true;
                 console.log('✅ 浏览器环境依赖初始化成功');
             } else {
@@ -1517,6 +2129,23 @@ class MarkdownToQQConverter {
                 const IndentManager = require('../utils/indentManager.js');
                 this.richTextFormatter = new RichTextFormatter();
                 this.indentManager = new IndentManager();
+                
+                // 初始化代码块处理器
+                try {
+                    const CodeBlockHandler = require('./shared/codeBlockHandler.js');
+                    this.codeBlockHandler = new CodeBlockHandler(this.richTextFormatter, this.he);
+                } catch (e) {
+                    throw new Error(`CodeBlockHandler 加载失败: ${e.message}`);
+                }
+                
+                // 初始化节点管理器
+                try {
+                    const NodeManager = require('./shared/nodeManager.js');
+                    this.nodeManager = new NodeManager();
+                } catch (e) {
+                    throw new Error(`NodeManager 加载失败: ${e.message}`);
+                }
+                
                 this._initialized = true;
                 console.log('✅ Node.js 环境依赖初始化成功');
             }
@@ -1776,49 +2405,7 @@ class MarkdownToQQConverter {
      */
     findParentNode(stack, lineInfo) {
         this._ensureInitialized(); // 确保依赖已初始化
-        let parentIndex = -1;
-        let parentNode = null;
-        
-        // 从栈顶开始查找合适的父节点
-        for (let i = stack.length - 1; i >= 0; i--) {
-            const stackItem = stack[i];
-            
-            // 如果当前是标题
-            if (lineInfo.headerLevel > 0) {
-                // 标题的父节点应该是层级更小的标题
-                if (stackItem.headerLevel > 0 && lineInfo.headerLevel > stackItem.headerLevel) {
-                    parentIndex = i;
-                    parentNode = stackItem.node;
-                    break;
-                }
-            } else {
-                // 非标题内容的父节点判断
-                // 1. 如果当前行缩进级别大于栈中节点的缩进级别，则可以作为子节点
-                if (lineInfo.indent > stackItem.indentLevel) {
-                    parentIndex = i;
-                    parentNode = stackItem.node;
-                    break;
-                }
-                // 2. 如果当前行缩进级别等于栈中节点的缩进级别，且栈中节点是标题，则可以作为标题的内容
-                if (lineInfo.indent === stackItem.indentLevel && stackItem.headerLevel > 0) {
-                    parentIndex = i;
-                    parentNode = stackItem.node;
-                    break;
-                }
-                // 3. 如果当前行缩进级别等于栈中节点的缩进级别，且都是列表项，则可以作为同级节点
-                if (lineInfo.indent === stackItem.indentLevel && lineInfo.type === 'list' && stackItem.type === 'list') {
-                    // 同级列表项，弹出当前父节点，寻找更上层的父节点
-                    continue;
-                }
-                // 4. 如果当前行缩进级别等于栈中节点的缩进级别，且都是普通文本，则可以作为同级节点
-                if (lineInfo.indent === stackItem.indentLevel && lineInfo.type === 'text' && stackItem.type === 'text') {
-                    // 同级文本，弹出当前父节点，寻找更上层的父节点
-                    continue;
-                }
-            }
-        }
-        
-        return { parentIndex, parentNode };
+        return this.nodeManager.findParentNode(stack, lineInfo);
     }
 
     /**
@@ -1828,55 +2415,11 @@ class MarkdownToQQConverter {
      */
     createNode(lineInfo) {
         this._ensureInitialized(); // 确保依赖已初始化
-        const nodeId = this.generateNodeId();
-        
-        if (lineInfo.type === 'header') {
-            return {
-                id: nodeId,
-                title: this.richTextFormatter.format(lineInfo.content, this.md),
-                labels: [this.HEADER_LABEL],
-                collapse: false,
-                children: { attached: [] }
-            };
-        } else if (lineInfo.type === 'divider') {
-            return {
-                id: nodeId,
-                title: '---',
-                labels: [this.DIVIDER_LABEL],
-                collapse: false,
-                children: { attached: [] }
-            };
-        } else if (lineInfo.type === 'image') {
-            const altText = lineInfo.alt || 'image';
-            const imageUrl = lineInfo.url;
-            
-            return { 
-                id: nodeId,
-                title: '', 
-                images: [{ 
-                    id: this.generateNodeId(), 
-                    w: 80, // 设置合适的宽度作为缩略图
-                    h: 80, // 设置合适的高度作为缩略图
-                    ow: 80, // 原始宽度
-                    oh: 80, // 原始高度
-                    url: imageUrl
-                }], 
-                notes: { 
-                    content: `<p>Image Alt: ${altText}</p>` 
-                },
-                collapse: false,
-                children: { attached: [] } 
-            };
-        } else {
-            const content = lineInfo.content.replace(/^(\s*[-*+>]\s*)/, '');
-            return { 
-                id: nodeId,
-                title: this.richTextFormatter.format(content, this.md), 
-                collapse: false,
-                children: { attached: [] },
-                originalIndent: lineInfo.indent // 保存原始缩进信息
-            };
-        }
+        const labels = {
+            HEADER_LABEL: this.HEADER_LABEL,
+            DIVIDER_LABEL: this.DIVIDER_LABEL
+        };
+        return this.nodeManager.createNode(lineInfo, this.richTextFormatter, this.md, labels);
     }
 
     /**
@@ -1884,7 +2427,7 @@ class MarkdownToQQConverter {
      * @returns {string} 唯一ID
      */
     generateNodeId() {
-        return 'node_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+        return this.nodeManager.generateNodeId();
     }
 
     /**
@@ -1895,20 +2438,7 @@ class MarkdownToQQConverter {
      */
     createCodeBlockNode(codeLines, language) {
         this._ensureInitialized(); // 确保依赖已初始化
-        // 修复：生成QQ思维导图期望的HTML格式
-        const title = language ? `\`\`\`${language}` : '```';
-        
-        // 将代码行转换为QQ思维导图期望的HTML格式
-        const htmlContent = this.convertCodeLinesToQQHtml(codeLines, language);
-        
-        return {
-            id: this.generateNodeId(),
-            title: this.richTextFormatter.format(title, this.md),
-            labels: [this.CODE_BLOCK_LABEL],
-            notes: { content: htmlContent },
-            collapse: false,
-            children: { attached: [] }
-        };
+        return this.codeBlockHandler.createCodeBlockNode(codeLines, language, this.md);
     }
 
     /**
@@ -1919,48 +2449,7 @@ class MarkdownToQQConverter {
      */
     convertCodeLinesToQQHtml(codeLines, language = '') {
         this._ensureInitialized(); // 确保依赖已初始化
-        const paragraphs = [];
-        let currentParagraphLines = [];
-
-        const flushParagraph = () => {
-            if (currentParagraphLines.length > 0) {
-                const paragraphContent = currentParagraphLines.map(line => this.processCodeLine(line)).join('');
-                paragraphs.push(`<p>${paragraphContent}</p>`);
-                currentParagraphLines = [];
-            }
-        };
-
-        // 处理代码行，正确处理空行
-        for (let i = 0; i < codeLines.length; i++) {
-            const line = codeLines[i];
-            
-            if (line.trim() === '') {
-                // 空行：结束当前段落，添加空段落
-                flushParagraph();
-                paragraphs.push('<p><br></p>');
-            } else {
-                // 非空行：添加到当前段落
-                currentParagraphLines.push(line);
-            }
-        }
-        
-        // 处理最后一个段落
-        flushParagraph();
-
-        // 添加语言标识到第一个段落
-        if (paragraphs.length > 0) {
-            const languagePrefix = language ? `\`\`\`${language}<br>` : '```<br>';
-            paragraphs[0] = paragraphs[0].replace('<p>', `<p>${languagePrefix}`);
-        } else {
-            // 如果没有内容，创建默认段落
-            const languagePrefix = language ? `\`\`\`${language}<br>` : '```<br>';
-            paragraphs.push(`<p>${languagePrefix}</p>`);
-        }
-        
-        // 添加结束标记
-        paragraphs.push('<p>```</p>');
-
-        return paragraphs.join('\n');
+        return this.codeBlockHandler.convertCodeLinesToQQHtml(codeLines, language);
     }
 
     /**
@@ -1981,32 +2470,7 @@ class MarkdownToQQConverter {
      */
     processCodeLine(line) {
         this._ensureInitialized(); // 确保依赖已初始化
-        
-        // 使用he库进行HTML实体编码
-        const escapedLine = this.he.encode(line, {
-            'useNamedReferences': false,
-            'allowUnsafeSymbols': false,
-            'decimal': false // 使用十六进制格式
-        });
-
-        // 将HTML实体转换为Unicode转义格式以匹配QQ思维导图期望
-        let result = escapedLine.replace(/&#x([0-9a-fA-F]+);/g, (match, hex) => {
-            return `\\u{${hex.toUpperCase()}}`;
-        });
-        
-        // 修复：将双反斜杠转换为单反斜杠以匹配QQ思维导图期望
-        result = result.replace(/\\\\u\{/g, '\\u{');
-        
-        // 修复：将Unicode转义转换为实际字符以匹配QQ思维导图期望
-        result = result.replace(/\\u\{([0-9A-F]+)\}/g, (match, hex) => {
-            return String.fromCodePoint(parseInt(hex, 16));
-        });
-
-        // 处理缩进：将前导空格转换为&nbsp;，使用双重转义
-        result = result.replace(/^ +/g, (spaces) => '&amp;nbsp;'.repeat(spaces.length));
-
-        // 添加换行标签
-        return result + '<br>';
+        return this.codeBlockHandler.processCodeLine(line);
     }
 
     /**
@@ -2016,13 +2480,7 @@ class MarkdownToQQConverter {
      * @param {Array} forest - 根节点数组
      */
     attachNode(newNode, parentNode, forest) {
-        if (parentNode) {
-            if (!parentNode.children) parentNode.children = { attached: [] };
-            if (!parentNode.children.attached) parentNode.children.attached = [];
-            parentNode.children.attached.push(newNode);
-        } else {
-            forest.push({ type: 5, data: newNode });
-        }
+        this.nodeManager.attachNode(newNode, parentNode, forest);
     }
 
     /**
@@ -2631,6 +3089,9 @@ if (typeof module !== 'undefined' && module.exports) {
         if (modules.LinePreserver) window.LinePreserver = modules.LinePreserver;
         if (modules.RichTextFormatter) window.RichTextFormatter = modules.RichTextFormatter;
         if (modules.QQMindMapParser) window.QQMindMapParser = modules.QQMindMapParser;
+        if (modules.CodeBlockHandler) window.CodeBlockHandler = modules.CodeBlockHandler;
+        if (modules.NodeManager) window.NodeManager = modules.NodeManager;
+        if (modules.HtmlUtils) window.HtmlUtils = modules.HtmlUtils;
         if (modules.QQToMarkdownConverter) window.QQToMarkdownConverter = modules.QQToMarkdownConverter;
         if (modules.MarkdownToQQConverter) window.MarkdownToQQConverter = modules.MarkdownToQQConverter;
         if (modules.NotificationSystem) window.NotificationSystem = modules.NotificationSystem;
@@ -2676,10 +3137,20 @@ if (typeof module !== 'undefined' && module.exports) {
                 const QQToMarkdownConverter = modules.QQToMarkdownConverter;
                 const MarkdownToQQConverter = modules.MarkdownToQQConverter;
                 const InterfaceManager = modules.InterfaceManager;
+                const IndentManager = modules.IndentManager;
+                const LinePreserver = modules.LinePreserver;
+                const RichTextFormatter = modules.RichTextFormatter;
 
                 this.notifications = new NotificationSystem();
                 this.notifications.addStyles();
+                
+                // 创建依赖实例
                 this.qqParser = new QQMindMapParser();
+                this.indentManager = new IndentManager();
+                this.linePreserver = new LinePreserver(this.indentManager);
+                this.richTextFormatter = new RichTextFormatter(this.qqParser);
+                
+                // 创建转换器，传递依赖
                 this.qqToMdConverter = new QQToMarkdownConverter(this.qqParser, DOMPurify);
                 this.mdToQqConverter = new MarkdownToQQConverter(this.md, he);
                 this.interfaceManager = new InterfaceManager(this);

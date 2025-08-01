@@ -6,23 +6,17 @@
 // 导入依赖 - 修复浏览器环境下的模块加载问题
 let RichTextFormatter;
 let IndentManager;
-let CodeBlockHandler;
-let NodeManager;
 
 // 在浏览器环境中，直接使用全局对象，不尝试require
 if (typeof window !== 'undefined') {
     // 浏览器环境：使用全局对象
     RichTextFormatter = window.RichTextFormatter;
     IndentManager = window.IndentManager;
-    CodeBlockHandler = window.CodeBlockHandler;
-    NodeManager = window.NodeManager;
 } else if (typeof require !== 'undefined') {
     // Node.js 环境：使用require
     try {
         RichTextFormatter = require('../formatters/richText.js');
         IndentManager = require('../utils/indentManager.js');
-        CodeBlockHandler = require('./shared/codeBlockHandler.js');
-        NodeManager = require('./shared/nodeManager.js');
     } catch (e) {
         console.warn('Node.js环境下模块加载失败:', e.message);
     }
@@ -81,21 +75,6 @@ class MarkdownToQQConverter {
                 
                 this.richTextFormatter = new window.RichTextFormatter();
                 this.indentManager = new window.IndentManager();
-                
-                // 初始化代码块处理器
-                if (typeof window.CodeBlockHandler !== 'undefined') {
-                    this.codeBlockHandler = new window.CodeBlockHandler(this.richTextFormatter, this.he);
-                } else {
-                    throw new Error('CodeBlockHandler 未加载，无法初始化 MarkdownToQQConverter');
-                }
-                
-                // 初始化节点管理器
-                if (typeof window.NodeManager !== 'undefined') {
-                    this.nodeManager = new window.NodeManager();
-                } else {
-                    throw new Error('NodeManager 未加载，无法初始化 MarkdownToQQConverter');
-                }
-                
                 this._initialized = true;
                 console.log('✅ 浏览器环境依赖初始化成功');
             } else {
@@ -104,23 +83,6 @@ class MarkdownToQQConverter {
                 const IndentManager = require('../utils/indentManager.js');
                 this.richTextFormatter = new RichTextFormatter();
                 this.indentManager = new IndentManager();
-                
-                // 初始化代码块处理器
-                try {
-                    const CodeBlockHandler = require('./shared/codeBlockHandler.js');
-                    this.codeBlockHandler = new CodeBlockHandler(this.richTextFormatter, this.he);
-                } catch (e) {
-                    throw new Error(`CodeBlockHandler 加载失败: ${e.message}`);
-                }
-                
-                // 初始化节点管理器
-                try {
-                    const NodeManager = require('./shared/nodeManager.js');
-                    this.nodeManager = new NodeManager();
-                } catch (e) {
-                    throw new Error(`NodeManager 加载失败: ${e.message}`);
-                }
-                
                 this._initialized = true;
                 console.log('✅ Node.js 环境依赖初始化成功');
             }
@@ -380,7 +342,49 @@ class MarkdownToQQConverter {
      */
     findParentNode(stack, lineInfo) {
         this._ensureInitialized(); // 确保依赖已初始化
-        return this.nodeManager.findParentNode(stack, lineInfo);
+        let parentIndex = -1;
+        let parentNode = null;
+        
+        // 从栈顶开始查找合适的父节点
+        for (let i = stack.length - 1; i >= 0; i--) {
+            const stackItem = stack[i];
+            
+            // 如果当前是标题
+            if (lineInfo.headerLevel > 0) {
+                // 标题的父节点应该是层级更小的标题
+                if (stackItem.headerLevel > 0 && lineInfo.headerLevel > stackItem.headerLevel) {
+                    parentIndex = i;
+                    parentNode = stackItem.node;
+                    break;
+                }
+            } else {
+                // 非标题内容的父节点判断
+                // 1. 如果当前行缩进级别大于栈中节点的缩进级别，则可以作为子节点
+                if (lineInfo.indent > stackItem.indentLevel) {
+                    parentIndex = i;
+                    parentNode = stackItem.node;
+                    break;
+                }
+                // 2. 如果当前行缩进级别等于栈中节点的缩进级别，且栈中节点是标题，则可以作为标题的内容
+                if (lineInfo.indent === stackItem.indentLevel && stackItem.headerLevel > 0) {
+                    parentIndex = i;
+                    parentNode = stackItem.node;
+                    break;
+                }
+                // 3. 如果当前行缩进级别等于栈中节点的缩进级别，且都是列表项，则可以作为同级节点
+                if (lineInfo.indent === stackItem.indentLevel && lineInfo.type === 'list' && stackItem.type === 'list') {
+                    // 同级列表项，弹出当前父节点，寻找更上层的父节点
+                    continue;
+                }
+                // 4. 如果当前行缩进级别等于栈中节点的缩进级别，且都是普通文本，则可以作为同级节点
+                if (lineInfo.indent === stackItem.indentLevel && lineInfo.type === 'text' && stackItem.type === 'text') {
+                    // 同级文本，弹出当前父节点，寻找更上层的父节点
+                    continue;
+                }
+            }
+        }
+        
+        return { parentIndex, parentNode };
     }
 
     /**
@@ -390,11 +394,55 @@ class MarkdownToQQConverter {
      */
     createNode(lineInfo) {
         this._ensureInitialized(); // 确保依赖已初始化
-        const labels = {
-            HEADER_LABEL: this.HEADER_LABEL,
-            DIVIDER_LABEL: this.DIVIDER_LABEL
-        };
-        return this.nodeManager.createNode(lineInfo, this.richTextFormatter, this.md, labels);
+        const nodeId = this.generateNodeId();
+        
+        if (lineInfo.type === 'header') {
+            return {
+                id: nodeId,
+                title: this.richTextFormatter.format(lineInfo.content, this.md),
+                labels: [this.HEADER_LABEL],
+                collapse: false,
+                children: { attached: [] }
+            };
+        } else if (lineInfo.type === 'divider') {
+            return {
+                id: nodeId,
+                title: '---',
+                labels: [this.DIVIDER_LABEL],
+                collapse: false,
+                children: { attached: [] }
+            };
+        } else if (lineInfo.type === 'image') {
+            const altText = lineInfo.alt || 'image';
+            const imageUrl = lineInfo.url;
+            
+            return { 
+                id: nodeId,
+                title: '', 
+                images: [{ 
+                    id: this.generateNodeId(), 
+                    w: 80, // 设置合适的宽度作为缩略图
+                    h: 80, // 设置合适的高度作为缩略图
+                    ow: 80, // 原始宽度
+                    oh: 80, // 原始高度
+                    url: imageUrl
+                }], 
+                notes: { 
+                    content: `<p>Image Alt: ${altText}</p>` 
+                },
+                collapse: false,
+                children: { attached: [] } 
+            };
+        } else {
+            const content = lineInfo.content.replace(/^(\s*[-*+>]\s*)/, '');
+            return { 
+                id: nodeId,
+                title: this.richTextFormatter.format(content, this.md), 
+                collapse: false,
+                children: { attached: [] },
+                originalIndent: lineInfo.indent // 保存原始缩进信息
+            };
+        }
     }
 
     /**
@@ -402,7 +450,7 @@ class MarkdownToQQConverter {
      * @returns {string} 唯一ID
      */
     generateNodeId() {
-        return this.nodeManager.generateNodeId();
+        return 'node_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
     }
 
     /**
@@ -413,7 +461,20 @@ class MarkdownToQQConverter {
      */
     createCodeBlockNode(codeLines, language) {
         this._ensureInitialized(); // 确保依赖已初始化
-        return this.codeBlockHandler.createCodeBlockNode(codeLines, language, this.md);
+        // 修复：生成QQ思维导图期望的HTML格式
+        const title = language ? `\`\`\`${language}` : '```';
+        
+        // 将代码行转换为QQ思维导图期望的HTML格式
+        const htmlContent = this.convertCodeLinesToQQHtml(codeLines, language);
+        
+        return {
+            id: this.generateNodeId(),
+            title: this.richTextFormatter.format(title, this.md),
+            labels: [this.CODE_BLOCK_LABEL],
+            notes: { content: htmlContent },
+            collapse: false,
+            children: { attached: [] }
+        };
     }
 
     /**
@@ -424,7 +485,48 @@ class MarkdownToQQConverter {
      */
     convertCodeLinesToQQHtml(codeLines, language = '') {
         this._ensureInitialized(); // 确保依赖已初始化
-        return this.codeBlockHandler.convertCodeLinesToQQHtml(codeLines, language);
+        const paragraphs = [];
+        let currentParagraphLines = [];
+
+        const flushParagraph = () => {
+            if (currentParagraphLines.length > 0) {
+                const paragraphContent = currentParagraphLines.map(line => this.processCodeLine(line)).join('');
+                paragraphs.push(`<p>${paragraphContent}</p>`);
+                currentParagraphLines = [];
+            }
+        };
+
+        // 处理代码行，正确处理空行
+        for (let i = 0; i < codeLines.length; i++) {
+            const line = codeLines[i];
+            
+            if (line.trim() === '') {
+                // 空行：结束当前段落，添加空段落
+                flushParagraph();
+                paragraphs.push('<p><br></p>');
+            } else {
+                // 非空行：添加到当前段落
+                currentParagraphLines.push(line);
+            }
+        }
+        
+        // 处理最后一个段落
+        flushParagraph();
+
+        // 添加语言标识到第一个段落
+        if (paragraphs.length > 0) {
+            const languagePrefix = language ? `\`\`\`${language}<br>` : '```<br>';
+            paragraphs[0] = paragraphs[0].replace('<p>', `<p>${languagePrefix}`);
+        } else {
+            // 如果没有内容，创建默认段落
+            const languagePrefix = language ? `\`\`\`${language}<br>` : '```<br>';
+            paragraphs.push(`<p>${languagePrefix}</p>`);
+        }
+        
+        // 添加结束标记
+        paragraphs.push('<p>```</p>');
+
+        return paragraphs.join('\n');
     }
 
     /**
@@ -445,7 +547,32 @@ class MarkdownToQQConverter {
      */
     processCodeLine(line) {
         this._ensureInitialized(); // 确保依赖已初始化
-        return this.codeBlockHandler.processCodeLine(line);
+        
+        // 使用he库进行HTML实体编码
+        const escapedLine = this.he.encode(line, {
+            'useNamedReferences': false,
+            'allowUnsafeSymbols': false,
+            'decimal': false // 使用十六进制格式
+        });
+
+        // 将HTML实体转换为Unicode转义格式以匹配QQ思维导图期望
+        let result = escapedLine.replace(/&#x([0-9a-fA-F]+);/g, (match, hex) => {
+            return `\\u{${hex.toUpperCase()}}`;
+        });
+        
+        // 修复：将双反斜杠转换为单反斜杠以匹配QQ思维导图期望
+        result = result.replace(/\\\\u\{/g, '\\u{');
+        
+        // 修复：将Unicode转义转换为实际字符以匹配QQ思维导图期望
+        result = result.replace(/\\u\{([0-9A-F]+)\}/g, (match, hex) => {
+            return String.fromCodePoint(parseInt(hex, 16));
+        });
+
+        // 处理缩进：将前导空格转换为&nbsp;，使用双重转义
+        result = result.replace(/^ +/g, (spaces) => '&amp;nbsp;'.repeat(spaces.length));
+
+        // 添加换行标签
+        return result + '<br>';
     }
 
     /**
@@ -455,7 +582,13 @@ class MarkdownToQQConverter {
      * @param {Array} forest - 根节点数组
      */
     attachNode(newNode, parentNode, forest) {
-        this.nodeManager.attachNode(newNode, parentNode, forest);
+        if (parentNode) {
+            if (!parentNode.children) parentNode.children = { attached: [] };
+            if (!parentNode.children.attached) parentNode.children.attached = [];
+            parentNode.children.attached.push(newNode);
+        } else {
+            forest.push({ type: 5, data: newNode });
+        }
     }
 
     /**

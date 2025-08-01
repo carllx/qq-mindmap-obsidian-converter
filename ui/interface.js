@@ -17,22 +17,42 @@ class InterfaceManager {
      */
     init() {
         this.waitForUIAndInject();
-        this.startClipboardListener();
     }
 
     /**
      * 等待UI加载并注入组件
      */
     waitForUIAndInject() {
+        let attempts = 0;
+        const maxAttempts = 10;
+        
         const interval = setInterval(() => {
-            const targetSelector = '#editor-root > div > div > div.Footer_footer__DdscW';
-            const footer = document.querySelector(targetSelector);
-            if (footer) {
+            attempts++;
+            
+            // 尝试多个可能的选择器
+            const selectors = [
+                '#editor-root > div > div > div.Footer_footer__DdscW',
+                '.Footer_footer__DdscW',
+                'footer',
+                'body'
+            ];
+            
+            let targetElement = null;
+            for (const selector of selectors) {
+                targetElement = document.querySelector(selector);
+                if (targetElement) break;
+            }
+            
+            if (targetElement) {
                 clearInterval(interval);
-                this.createUI(footer);
+                this.createUI(targetElement);
+                this.addEventListeners();
+            } else if (attempts >= maxAttempts) {
+                clearInterval(interval);
+                this.createUI(document.body);
                 this.addEventListeners();
             }
-        }, 500);
+        }, 1000);
     }
 
     /**
@@ -42,109 +62,70 @@ class InterfaceManager {
     createUI(parentElement) {
         this.container = document.createElement('div');
         this.container.id = 'converter-container';
-        this.container.innerHTML = `
-            <div id="qq-to-md" class="converter-button">QQ to MD</div>
-            <div id="md-to-qq" class="converter-button">MD to QQ</div>
-            <div class="converter-options">
-                <label><input type="checkbox" id="auto-detect" ${this.config.autoDetect ? 'checked' : ''}> Auto</label>
-            </div>
+        this.container.style.cssText = `
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            z-index: 10000;
+            display: flex;
+            gap: 10px;
+            background: rgba(255, 255, 255, 0.95);
+            padding: 10px;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+            border: 1px solid #e0e0e0;
         `;
-        parentElement.prepend(this.container);
-        this.addStyles();
-    }
 
-    /**
-     * 添加样式
-     */
-    addStyles() {
-        const styles = `
-            #converter-container {
-                display: flex;
-                align-items: center;
-                gap: 8px;
-                padding: 0 10px;
-                height: 100%;
-            }
-            .converter-button {
-                z-index: 9999;
-                background: #3c3c3c;
+        // 创建按钮
+        const qqToMdBtn = document.createElement('button');
+        qqToMdBtn.textContent = 'QQ to MD';
+        qqToMdBtn.style.cssText = `
+            background: #4CAF50;
                 color: white;
-                padding: 4px 12px;
+            border: none;
+            padding: 8px 16px;
                 border-radius: 4px;
                 cursor: pointer;
-                font-size: 12px;
-                border: 1px solid #555;
-                transition: background-color 0.2s;
-                user-select: none;
-            }
-            .converter-button:hover {
-                background: #555;
-            }
-            .converter-button.active {
-                background: #4CAF50;
-            }
-            .converter-options {
-                display: flex;
-                align-items: center;
-                z-index: 9999;
-            }
-            .converter-options label {
-                display: flex;
-                align-items: center;
-                color: #ccc;
-                font-size: 12px;
-                cursor: pointer;
-                user-select: none;
-            }
-            .converter-options input {
-                margin-right: 4px;
-                cursor: pointer;
-            }
+            font-size: 14px;
+            font-weight: 500;
         `;
-        
-        if (typeof GM_addStyle !== 'undefined') {
-            GM_addStyle(styles);
-        } else {
-            const styleElement = document.createElement('style');
-            styleElement.textContent = styles;
-            document.head.appendChild(styleElement);
-        }
+        qqToMdBtn.onclick = () => this.handleQQToMDConversion();
+
+        const mdToQqBtn = document.createElement('button');
+        mdToQqBtn.textContent = 'MD to QQ';
+        mdToQqBtn.style.cssText = `
+            background: #2196F3;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 4px;
+                cursor: pointer;
+            font-size: 14px;
+            font-weight: 500;
+        `;
+        mdToQqBtn.onclick = () => this.converter.convertMDToQQ();
+
+        // 添加按钮到容器
+        this.container.appendChild(qqToMdBtn);
+        this.container.appendChild(mdToQqBtn);
+
+        // 添加到页面
+        parentElement.appendChild(this.container);
     }
 
     /**
      * 添加事件监听器
      */
     addEventListeners() {
-        const qqToMdBtn = document.getElementById('qq-to-md');
-        const mdToQqBtn = document.getElementById('md-to-qq');
-        const autoDetectCheckbox = document.getElementById('auto-detect');
-
-        if (qqToMdBtn) {
-            qqToMdBtn.addEventListener('click', () => {
-                this.handleQQToMDConversion();
-            });
-        }
-
-        if (mdToQqBtn) {
-            mdToQqBtn.addEventListener('click', () => {
-                this.converter.convertMDToQQ();
-            });
-        }
-
-        if (autoDetectCheckbox) {
-            autoDetectCheckbox.addEventListener('change', (e) => {
-                this.config.autoDetect = e.target.checked;
-                this.startClipboardListener();
-            });
-        }
+        // 可以在这里添加更多事件监听器
     }
 
     /**
      * 处理QQ到MD转换，包含header level选择
      */
-    handleQQToMDConversion() {
+    async handleQQToMDConversion() {
         // 获取QQ思维导图数据
-        const qqData = this.converter.getQQMindMapData();
+        const qqData = await this.converter.getQQMindMapData();
         if (!qqData || qqData.length === 0) {
             this.showNotification('未检测到QQ思维导图数据', 'error');
             return;
@@ -169,10 +150,10 @@ class InterfaceManager {
     checkForHeaderNodes(nodes) {
         for (const node of nodes) {
             const data = node.data || node;
-            if (data.labels?.some(l => l.text === 'header')) {
+            if (data.labels && data.labels.some(l => l.text === 'header')) {
                 return true;
             }
-            if (data.children?.attached) {
+            if (data.children && data.children.attached) {
                 if (this.checkForHeaderNodes(data.children.attached)) {
                     return true;
                 }
@@ -292,10 +273,6 @@ class InterfaceManager {
      * @param {string} type - 消息类型 ('success', 'error', 'info')
      */
     showNotification(message, type = 'info') {
-        if (this.notificationSystem) {
-            this.notificationSystem.show(message, type);
-        } else {
-            // 简单的通知实现
             const notification = document.createElement('div');
             notification.style.cssText = `
                 position: fixed;
@@ -319,94 +296,22 @@ class InterfaceManager {
                 }
             }, 3000);
         }
-    }
 
     /**
-     * 更新按钮样式
-     * @param {string} sourceType - 源类型 ('qq', 'md', 'none')
-     */
-    updateButtonStyles(sourceType) {
-        const qqToMdBtn = document.getElementById('qq-to-md');
-        const mdToQqBtn = document.getElementById('md-to-qq');
-        
-        if (!qqToMdBtn || !mdToQqBtn) return;
-
-        // 移除所有活动状态
-        qqToMdBtn.classList.remove('active');
-        mdToQqBtn.classList.remove('active');
-
-        // 设置活动状态
-        if (sourceType === 'qq') {
-            qqToMdBtn.classList.add('active');
-        } else if (sourceType === 'md') {
-            mdToQqBtn.classList.add('active');
-        }
-    }
-
-    /**
-     * 处理复制事件
-     */
-    handleCopy = () => {
-        this.updateButtonStyles('qq');
-    }
-
-    /**
-     * 处理粘贴事件
-     * @param {ClipboardEvent} event - 粘贴事件
-     */
-    handlePaste = (event) => {
-        const types = event.clipboardData.types;
-        if (types.includes('text/html')) {
-            this.updateButtonStyles('qq');
-        } else if (types.includes('text/plain')) {
-            this.updateButtonStyles('md');
-        }
-    }
-
-    /**
-     * 启动剪贴板监听器
-     */
-    startClipboardListener() {
-        // 移除现有监听器
-        document.removeEventListener('copy', this.handleCopy);
-        document.removeEventListener('paste', this.handlePaste);
-
-        if (this.config.autoDetect) {
-            document.addEventListener('copy', this.handleCopy);
-            document.addEventListener('paste', this.handlePaste);
-        } else {
-            this.updateButtonStyles('none');
-        }
-    }
-
-    /**
-     * 显示加载状态
+     * 设置加载状态
      * @param {boolean} isLoading - 是否正在加载
      */
     setLoadingState(isLoading) {
-        const qqToMdBtn = document.getElementById('qq-to-md');
-        const mdToQqBtn = document.getElementById('md-to-qq');
-        
-        if (qqToMdBtn) {
-            qqToMdBtn.style.opacity = isLoading ? '0.6' : '1';
-            qqToMdBtn.style.cursor = isLoading ? 'not-allowed' : 'pointer';
-        }
-        
-        if (mdToQqBtn) {
-            mdToQqBtn.style.opacity = isLoading ? '0.6' : '1';
-            mdToQqBtn.style.cursor = isLoading ? 'not-allowed' : 'pointer';
-        }
+        // 可以在这里添加加载状态的UI更新
     }
 
     /**
-     * 销毁界面
+     * 销毁UI组件
      */
     destroy() {
-        if (this.container) {
-            this.container.remove();
+        if (this.container && this.container.parentNode) {
+            this.container.parentNode.removeChild(this.container);
         }
-        document.removeEventListener('copy', this.handleCopy);
-        document.removeEventListener('paste', this.handlePaste);
     }
 }
 

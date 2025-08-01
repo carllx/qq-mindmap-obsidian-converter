@@ -6,8 +6,8 @@ class IndentManager {
     constructor() {
         // 标准缩进配置
         this.config = {
-            tabSize: 4,           // 一个 tab 等于多少个空格
-            useTabs: true,        // 是否使用 tab 而不是空格
+            tabSize: 2,           // 修复：改为2个空格，更符合Markdown习惯
+            useTabs: false,       // 修复：改为false，使用空格而不是tab
             maxIndentLevel: 10    // 最大缩进级别
         };
     }
@@ -161,6 +161,8 @@ class IndentManager {
 }
 
 // 导出模块
-if (typeof window !== 'undefined') {
+if (typeof module !== 'undefined' && module.exports) {
+    module.exports = IndentManager;
+} else if (typeof window !== 'undefined') {
     window.IndentManager = IndentManager;
 } 

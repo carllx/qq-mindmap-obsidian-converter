@@ -22,9 +22,12 @@
   "author": "carllx & Gemini",
   "license": "MIT",
   "devDependencies": {
+    "dompurify": "^3.1.5",
+    "he": "^1.2.0",
     "jsdom": "^24.0.0",
     "markdown-it": "^14.1.0",
-    "dompurify": "^3.1.5"
+    "showdown": "^2.1.0",
+    "turndown": "^7.2.0"
   },
   "engines": {
     "node": ">=18.0.0"
@@ -36,5 +39,8 @@
   "bugs": {
     "url": "https://github.com/your-username/QQmindmap2Obsidian/issues"
   },
-  "homepage": "https://github.com/your-username/QQmindmap2Obsidian#readme"
-} 
+  "homepage": "https://github.com/your-username/QQmindmap2Obsidian#readme",
+  "dependencies": {
+    "he": "^1.2.0"
+  }
+}

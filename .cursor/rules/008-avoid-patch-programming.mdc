@@ -1,0 +1,238 @@
+# 避免打补丁式编程规则
+
+## 🎯 核心原则
+
+**永远不要用新的逻辑去掩盖旧问题。每个解决方案都应该从根本上解决问题，而不是通过表面性的修复。**
+
+## 🚨 什么是打补丁式编程
+
+### 错误示例
+```javascript
+// ❌ 打补丁式编程 - 用新逻辑掩盖旧问题
+function convertCodeBlock(content) {
+    // 旧问题：Unicode字符显示错误
+    let result = content;
+    
+    // 打补丁：添加更多转换逻辑来掩盖问题
+    result = result.replace(/\\u\{([0-9A-F]+)\}/g, (match, hex) => {
+        return String.fromCodePoint(parseInt(hex, 16));
+    });
+    
+    // 又发现新问题，继续打补丁
+    result = result.replace(/\\\\u\{/g, '\\u{');
+    
+    // 再发现新问题，继续打补丁
+    result = result.replace(/&amp;nbsp;/g, '&nbsp;');
+    
+    return result;
+}
+```
+
+### 正确示例
+```javascript
+// ✅ 根本原因解决方案 - 分析并解决根本问题
+function convertCodeBlock(content) {
+    // 分析根本原因：HTML实体编码和Unicode处理逻辑有问题
+    // 解决方案：重新设计字符处理流程
+    
+    // 1. 使用正确的HTML实体编码
+    const escapedContent = he.encode(content, {
+        'useNamedReferences': false,
+        'allowUnsafeSymbols': false,
+        'decimal': false
+    });
+    
+    // 2. 直接转换为实际字符，避免中间转义
+    const result = escapedContent.replace(/&#x([0-9a-fA-F]+);/g, (match, hex) => {
+        return String.fromCodePoint(parseInt(hex, 16));
+    });
+    
+    // 3. 统一处理缩进
+    return result.replace(/^ +/g, (spaces) => '&nbsp;'.repeat(spaces.length));
+}
+```
+
+## 🔍 根本原因分析方法
+
+### 1. 问题分析步骤
+```javascript
+// 当遇到问题时，按以下步骤分析：
+function analyzeProblem(issue) {
+    // 1. 为什么这个问题存在？
+    const rootCause = findRootCause(issue);
+    
+    // 2. 底层数据结构是什么？
+    const dataStructure = analyzeDataStructure(issue);
+    
+    // 3. 系统如何交互？
+    const systemInteraction = analyzeSystemInteraction(issue);
+    
+    // 4. 这个解决方案如何影响整体架构？
+    const architecturalImpact = analyzeArchitecturalImpact(solution);
+    
+    return { rootCause, dataStructure, systemInteraction, architecturalImpact };
+}
+```
+
+### 2. 解决方案设计原则
+```javascript
+// 设计解决方案时的检查清单
+function validateSolution(solution) {
+    const checklist = {
+        solvesRootCause: true,        // 解决根本原因
+        fitsArchitecture: true,       // 适应现有架构
+        isMaintainable: true,         // 可维护
+        isTestable: true,             // 可测试
+        isScalable: true,             // 可扩展
+        avoidsPatches: true           // 避免打补丁
+    };
+    
+    return Object.values(checklist).every(Boolean);
+}
+```
+
+## 📋 避免打补丁的检查清单
+
+### 在编写代码前
+- [ ] 我是否理解了问题的根本原因？
+- [ ] 这个解决方案是否会影响整体架构？
+- [ ] 是否有更好的设计模式可以应用？
+- [ ] 这个解决方案是否可维护和可测试？
+
+### 在编写代码时
+- [ ] 我是否在添加新的逻辑来掩盖旧问题？
+- [ ] 这个解决方案是否遵循单一职责原则？
+- [ ] 我是否在重复已有的功能？
+- [ ] 这个解决方案是否向后兼容？
+
+### 在编写代码后
+- [ ] 我是否添加了相应的测试？
+- [ ] 我是否更新了文档？
+- [ ] 我是否考虑了性能影响？
+- [ ] 我是否遵循了项目的架构原则？
+
+## 🏗️ 架构驱动设计
+
+### 1. 考虑架构影响
+```javascript
+// 在实施任何解决方案之前，考虑架构影响
+function considerArchitecturalImpact(change) {
+    const impacts = {
+        dataFlow: '数据流如何变化？',
+        moduleDependencies: '模块依赖如何变化？',
+        performance: '性能如何影响？',
+        maintainability: '可维护性如何影响？',
+        testability: '可测试性如何影响？'
+    };
+    
+    return analyzeImpacts(change, impacts);
+}
+```
+
+### 2. 优先选择可持续解决方案
+```javascript
+// 选择解决方案时的优先级
+const solutionPriority = [
+    '解决根本原因',           // 最高优先级
+    '改善架构设计',           // 高优先级
+    '优化现有实现',           // 中优先级
+    '添加兼容性处理',         // 低优先级
+    '临时修复'               // 最低优先级（避免）
+];
+```
+
+## 🧪 测试驱动开发
+
+### 1. 测试根本原因
+```javascript
+// 测试应该验证根本问题的解决
+function testRootCauseSolution() {
+    // 不要只测试表面现象
+    test('should solve Unicode encoding root cause', () => {
+        const result = convertCodeBlock(chineseCode);
+        expect(result).toContain('超声波'); // 验证实际字符
+        expect(result).not.toContain('\\u{'); // 验证没有转义
+    });
+}
+```
+
+### 2. 测试架构完整性
+```javascript
+// 测试应该验证架构完整性
+function testArchitecturalIntegrity() {
+    test('should maintain module boundaries', () => {
+        const converter = new MarkdownToQQConverter();
+        expect(converter.dependencies).toBeDefined();
+        expect(converter.convert).toBeDefined();
+    });
+}
+```
+
+## 📚 项目特定指导
+
+### 基于项目核心哲学
+参考项目的核心哲学文档：[001-core-philosophy.mdc](mdc:.cursor/rules/001-core-philosophy.mdc)
+
+### 关键原则
+1. **深度分析优先**: 在实施任何解决方案之前，分析问题的根本原因
+2. **架构驱动设计**: 考虑变更如何影响整体系统架构
+3. **数据完整性**: 确保 MD↔QQ 转换的可逆性
+4. **可维护性**: 代码应该易于理解和修改
+
+### 项目特定检查
+```javascript
+// 项目特定的解决方案验证
+function validateProjectSolution(solution) {
+    const projectChecks = {
+        maintainsReversibility: true,    // 保持双向转换可逆性
+        preservesDataIntegrity: true,    // 保持数据完整性
+        followsModuleStructure: true,    // 遵循模块结构
+        usesExistingLibraries: true,     // 使用现有库
+        updatesDocumentation: true       // 更新文档
+    };
+    
+    return Object.values(projectChecks).every(Boolean);
+}
+```
+
+## 🚀 成功指标
+
+### 代码质量指标
+- **可维护性**: 代码应该易于理解和修改
+- **可测试性**: 所有功能都应该是可验证的
+- **性能**: 转换应该快速高效
+- **可靠性**: 系统应该优雅地处理边缘情况
+
+### 解决方案质量指标
+- **根本性**: 解决方案是否解决了根本问题？
+- **可持续性**: 解决方案是否长期有效？
+- **扩展性**: 解决方案是否支持未来扩展？
+- **一致性**: 解决方案是否与现有架构一致？
+
+## 📝 实施指南
+
+### 1. 问题识别
+- 识别表面症状
+- 分析根本原因
+- 理解系统交互
+- 评估架构影响
+
+### 2. 解决方案设计
+- 设计架构兼容的解决方案
+- 考虑长期维护性
+- 确保可测试性
+- 验证向后兼容性
+
+### 3. 实施和验证
+- 实施根本原因解决方案
+- 添加全面测试
+- 更新文档
+- 验证架构完整性
+
+---
+
+**记住**: 每一行代码都应该有目的，每个解决方案都应该解决根本问题，每个决策都应该考虑系统的长期健康。
+description:
+globs:
+alwaysApply: false
+---

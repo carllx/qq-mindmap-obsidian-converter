@@ -173,6 +173,8 @@ class LinePreserver {
 }
 
 // 导出模块
-if (typeof window !== 'undefined') {
+if (typeof module !== 'undefined' && module.exports) {
+    module.exports = LinePreserver;
+} else if (typeof window !== 'undefined') {
     window.LinePreserver = LinePreserver;
 } 

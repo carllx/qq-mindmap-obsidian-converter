@@ -427,10 +427,9 @@
             return titleObject.children.flatMap(p => p.children?.map(textNode => {
                 let content = textNode.text || '';
                 if (textNode.backgroundColor === '#FFF3A1') content = `==${content}==`;
-                if (textNode.strike) content = `~~${content}~~`;
+                if (textNode.strikethrough) content = `~~${content}~~`;
                 if (textNode.fontStyle === 'italic') content = `*${content}*`;
                 if (textNode.fontWeight === 'bold') content = `**${content}**`;
-                if (textNode.underline) content = `[[${content}]]`;
                 return content;
             }) || []).join('');
         }
@@ -572,7 +571,7 @@
             for (const token of tokens) {
                 let content = token.content;
                 switch (token.type) {
-                    case 'strong_open': styleStack.push({ fontWeight: 'bold' }); continue;
+                    case 'strong_open': styleStack.push({ fontWeight: 700 }); continue;
                     case 'em_open': styleStack.push({ fontStyle: 'italic' }); continue;
                     case 's_open': styleStack.push({ strike: true }); continue;
                     case 'highlight_open': styleStack.push({ backgroundColor: '#FFF3A1' }); continue;

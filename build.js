@@ -23,14 +23,16 @@ function buildUserScript() {
         console.error('❌ `he` library not found at:', heLibraryPath);
     }
     
-    // 2. 读取模块文件
+    // 2. 读取模块文件 - 按依赖顺序排列
     const modules = [
         { name: 'IndentManager', file: 'core/utils/indentManager.js' },
         { name: 'LinePreserver', file: 'core/utils/linePreserver.js' },
+        { name: 'RichTextFormatter', file: 'core/formatters/richText.js' },
         { name: 'QQMindMapParser', file: 'core/parsers/qqParser.js' },
         { name: 'QQToMarkdownConverter', file: 'core/converters/qq2md.js' },
         { name: 'MarkdownToQQConverter', file: 'core/converters/md2qq.js' },
-        { name: 'NotificationSystem', file: 'ui/notifications.js' }
+        { name: 'NotificationSystem', file: 'ui/notifications.js' },
+        { name: 'InterfaceManager', file: 'ui/interface.js' }
     ];
     
     // 3. 生成模块代码
@@ -47,15 +49,24 @@ function buildUserScript() {
         moduleCode += `    define('${module.name}', function() {\n        ${content}\n        return ${className};\n    });\n\n`;
     }
     
-    // 添加全局变量定义
-    moduleCode += `    // 创建全局变量以便其他模块使用\n`;
-    moduleCode += `    const IndentManager = modules.IndentManager;\n`;
-    moduleCode += `    const LinePreserver = modules.LinePreserver;\n\n`;
+    // 4. 添加全局变量定义 - 在所有模块加载完成后
+    moduleCode += `    // 等待所有模块加载完成后创建全局变量\n`;
+    moduleCode += `    setTimeout(() => {\n`;
+    moduleCode += `        if (modules.IndentManager) window.IndentManager = modules.IndentManager;\n`;
+    moduleCode += `        if (modules.LinePreserver) window.LinePreserver = modules.LinePreserver;\n`;
+    moduleCode += `        if (modules.RichTextFormatter) window.RichTextFormatter = modules.RichTextFormatter;\n`;
+    moduleCode += `        if (modules.QQMindMapParser) window.QQMindMapParser = modules.QQMindMapParser;\n`;
+    moduleCode += `        if (modules.QQToMarkdownConverter) window.QQToMarkdownConverter = modules.QQToMarkdownConverter;\n`;
+    moduleCode += `        if (modules.MarkdownToQQConverter) window.MarkdownToQQConverter = modules.MarkdownToQQConverter;\n`;
+    moduleCode += `        if (modules.NotificationSystem) window.NotificationSystem = modules.NotificationSystem;\n`;
+    moduleCode += `        if (modules.InterfaceManager) window.InterfaceManager = modules.InterfaceManager;\n`;
+    moduleCode += `        console.log('✅ 全局变量已创建');\n`;
+    moduleCode += `    }, 100);\n\n`;
     
-    // 4. 替换模板中的占位符
+    // 5. 替换模板中的占位符
     template = template.replace('{{MODULES}}', moduleCode);
     
-    // 5. 写入输出文件
+    // 6. 写入输出文件
     fs.writeFileSync('QQmindmap2Obsidian.user.js', template);
     console.log('✅ 简单版本用户脚本构建完成: QQmindmap2Obsidian.user.js');
     console.log(`📊 文件大小: ${(template.length / 1024).toFixed(2)} KB`);

@@ -91,7 +91,7 @@ class QQMindMapParser {
                 if (textNode.backgroundColor === '#FFF3A1') styles.highlight = true;
                 if (textNode.strike) styles.strikethrough = true;
                 if (textNode.fontStyle === 'italic') styles.italic = true;
-                if (textNode.fontWeight === 'bold') styles.bold = true;
+                if (textNode.fontWeight === 700) styles.bold = true;
                 if (textNode.underline) styles.underline = true;
             });
         });

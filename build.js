@@ -28,6 +28,7 @@ function buildUserScript() {
         { name: 'IndentManager', file: 'core/utils/indentManager.js' },
         { name: 'LinePreserver', file: 'core/utils/linePreserver.js' },
         { name: 'QQMindMapParser', file: 'core/parsers/qqParser.js' },
+        { name: 'StyleProcessor', file: 'core/formatters/shared/styleProcessor.js' },
         { name: 'RichTextFormatter', file: 'core/formatters/richText.js' },
         { name: 'CodeBlockHandler', file: 'core/converters/shared/codeBlockHandler.js' },
         { name: 'NodeManager', file: 'core/converters/shared/nodeManager.js' },
@@ -58,6 +59,7 @@ function buildUserScript() {
     moduleCode += `        if (modules.IndentManager) window.IndentManager = modules.IndentManager;\n`;
     moduleCode += `        if (modules.LinePreserver) window.LinePreserver = modules.LinePreserver;\n`;
     moduleCode += `        if (modules.QQMindMapParser) window.QQMindMapParser = modules.QQMindMapParser;\n`;
+    moduleCode += `        if (modules.StyleProcessor) window.StyleProcessor = modules.StyleProcessor;\n`;
     moduleCode += `        if (modules.RichTextFormatter) window.RichTextFormatter = modules.RichTextFormatter;\n`;
     moduleCode += `        if (modules.CodeBlockHandler) window.CodeBlockHandler = modules.CodeBlockHandler;\n`;
     moduleCode += `        if (modules.NodeManager) window.NodeManager = modules.NodeManager;\n`;

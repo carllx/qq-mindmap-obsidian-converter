@@ -77,6 +77,7 @@
                 // 获取模块
                 const NotificationSystem = modules.NotificationSystem;
                 const QQMindMapParser = modules.QQMindMapParser;
+                const StyleProcessor = modules.StyleProcessor;
                 const QQToMarkdownConverter = modules.QQToMarkdownConverter;
                 const MarkdownToQQConverter = modules.MarkdownToQQConverter;
                 const InterfaceManager = modules.InterfaceManager;

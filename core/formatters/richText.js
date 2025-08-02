@@ -4,38 +4,22 @@
  */
 class RichTextFormatter {
     constructor(qqParser = null) {
-        this.styleMappings = {
-            // QQ到Markdown的样式映射
-            qqToMd: {
-                backgroundColor: {
-                    '#FFF3A1': '=={content}=='
-                },
-                strike: '~~{content}~~',
-                italic: '*{content}*', // 修复：使用 italic 而不是 fontStyle
-                fontWeight: {
-                    'bold': '**{content}**',
-                    700: '**{content}**'
-                },
-                underline: '<u>{content}</u>' // 修复：使用HTML标签而不是[[]]
-            },
-            // Markdown到QQ的样式映射
-            mdToQq: {
-                highlight: { backgroundColor: '#FFF3A1' },
-                strikethrough: { strike: true },
-                italic: { italic: true }, // 修复：使用 italic 而不是 fontStyle
-                bold: { fontWeight: 700 }, // 修复：使用数值700
-                wikilink: { underline: true, color: '#0052D9' },
-                link: { underline: true, color: '#0052D9' },
-                code: { fontFamily: 'monospace', backgroundColor: '#F0F0F0' }
-            }
-        };
-        
         // 注入 QQMindMapParser 依赖
         this.qqParser = qqParser;
         
         // 如果没有提供 qqParser，尝试从全局获取
         if (!this.qqParser && typeof window !== 'undefined') {
             this.qqParser = window.QQMindMapParser ? new window.QQMindMapParser() : null;
+        }
+
+        // 创建样式处理器
+        if (typeof StyleProcessor !== 'undefined') {
+            this.styleProcessor = new StyleProcessor();
+        } else if (typeof window !== 'undefined' && window.StyleProcessor) {
+            this.styleProcessor = new window.StyleProcessor();
+        } else {
+            console.warn('StyleProcessor not available, using fallback implementation');
+            this.styleProcessor = null;
         }
     }
 
@@ -70,8 +54,11 @@ class RichTextFormatter {
      * @returns {string} 修复后的文本
      */
     fixDuplicateBoldMarkers(text) {
-        // 匹配连续的粗体节点，插入空格，确保Obsidian正常渲染
-        // 例如：**数据格式：****`距离,归一化值`** -> **数据格式：** **`距离,归一化值`**
+        if (this.styleProcessor) {
+            return this.styleProcessor.fixDuplicateBoldMarkers(text);
+        }
+        
+        // 降级实现
         return text.replace(/\*\*([^*]+)\*\*(?=\*\*)/g, '**$1** ');
     }
 
@@ -81,41 +68,42 @@ class RichTextFormatter {
      * @returns {string} 带样式的文本
      */
     applyQQStyles(textNode) {
+        if (this.styleProcessor) {
+            return this.styleProcessor.applyQQStyles(textNode);
+        }
+        
+        // 降级实现
         let content = textNode.text || '';
         
-        // 修复：使用正确的属性名称和标准Markdown格式
         if (textNode.backgroundColor === '#FFF3A1') {
-            content = `==${content}==`; // 高亮格式
+            content = `==${content}==`;
         }
         
         if (textNode.strike) {
-            content = `~~${content}~~`; // 删除线
+            content = `~~${content}~~`;
         }
         
-        if (textNode.italic) { // 修复：使用 italic 而不是 fontStyle === 'italic'
-            content = `*${content}*`; // 斜体
+        if (textNode.italic) {
+            content = `*${content}*`;
         }
         
-        if (textNode.fontWeight === 'bold' || textNode.fontWeight === 700) { // 修复：支持字符串和数值
-            content = `**${content}**`; // 粗体
+        if (textNode.fontWeight === 'bold' || textNode.fontWeight === 700) {
+            content = `**${content}**`;
         }
         
         if (textNode.underline) {
-            content = `<u>${content}</u>`; // 修复：使用HTML标签而不是[[]]
+            content = `<u>${content}</u>`;
         }
         
-        // 添加对更多格式的支持
         if (textNode.fontFamily === 'monospace') {
-            content = `\`${content}\``; // 内联代码
+            content = `\`${content}\``;
         }
         
         if (textNode.color && textNode.color !== '#000000') {
-            // 对于有颜色的文本，使用HTML标签保持颜色信息
             content = `<span style="color: ${textNode.color}">${content}</span>`;
         }
         
         if (textNode.backgroundColor && textNode.backgroundColor !== '#FFF3A1') {
-            // 对于有背景色的文本，使用HTML标签保持背景色信息
             content = `<span style="background-color: ${textNode.backgroundColor}">${content}</span>`;
         }
         
@@ -128,183 +116,22 @@ class RichTextFormatter {
      * @returns {Array} QQ文本节点数组
      */
     buildQQNodesFromTokens(tokens) {
+        if (this.styleProcessor) {
+            return this.styleProcessor.buildQQNodesFromTokens(tokens);
+        }
+        
+        // 降级实现 - 简化版本
         const resultNodes = [];
-        const styleStack = [];
-        let currentStyle = {};
-
-        // 递归处理嵌套的tokens
-        const processTokens = (tokenList) => {
-            for (const token of tokenList) {
-                let content = token.content;
-                
-                // 处理样式开始标记
-                switch (token.type) {
-                    // 开启标签 - 修正：推入完整的当前样式状态
-                    case 'strong_open': 
-                        styleStack.push({...currentStyle});
-                        currentStyle = {...currentStyle, fontWeight: 700};
-                        continue;
-                        
-                    case 'em_open': 
-                        styleStack.push({...currentStyle});
-                        currentStyle = {...currentStyle, italic: true}; // 修复：使用 italic 而不是 fontStyle
-                        continue;
-                        
-                    case 's_open': 
-                        styleStack.push({...currentStyle});
-                        currentStyle = {...currentStyle, strike: true};
-                        continue;
-                        
-                    case 'highlight_open': 
-                        styleStack.push({...currentStyle});
-                        currentStyle = {...currentStyle, backgroundColor: '#FFF3A1'};
-                        continue;
-                        
-                    case 'wikilink_open': 
-                    case 'link_open': 
-                        styleStack.push({...currentStyle});
-                        currentStyle = {...currentStyle, underline: true, color: '#0052D9'};
-                        continue;
-
-                    // 关闭标签 - 修正：恢复到上一个样式状态
-                    case 'strong_close':
-                    case 'em_close':
-                    case 's_close':
-                    case 'highlight_close':
-                    case 'wikilink_close':
-                    case 'link_close': 
-                        if (styleStack.length > 0) {
-                            currentStyle = styleStack.pop();
-                        } else {
-                            currentStyle = {};
-                        }
-                        continue;
-
-                    // 自包含的样式token
-                    case 'strong':
-                        // 处理粗体内容
-                        if (token.children && token.children.length > 0) {
-                            // 递归处理子tokens
-                            const childStyle = {...currentStyle, fontWeight: 700};
-                            const childNodes = this.buildQQNodesFromTokens(token.children);
-                            childNodes.forEach(node => {
-                                resultNodes.push({
-                                    ...node,
-                                    ...childStyle
-                                });
-                            });
-                        } else {
-                            resultNodes.push({
-                                type: 'text',
-                                text: content,
-                                ...currentStyle,
-                                fontWeight: 700
-                            });
-                        }
-                        continue;
-
-                    case 'em':
-                        // 处理斜体内容
-                        if (token.children && token.children.length > 0) {
-                            const childStyle = {...currentStyle, italic: true};
-                            const childNodes = this.buildQQNodesFromTokens(token.children);
-                            childNodes.forEach(node => {
-                                resultNodes.push({
-                                    ...node,
-                                    ...childStyle
-                                });
-                            });
-                        } else {
-                            resultNodes.push({
-                                type: 'text',
-                                text: content,
-                                ...currentStyle,
-                                italic: true
-                            });
-                        }
-                        continue;
-
-                    // 内联代码（自包含token）- 修复：保留backtick标记
-                    case 'code_inline':
-                        resultNodes.push({
-                            type: 'text',
-                            text: `\`${content}\``, // 保留backtick标记
-                            ...currentStyle
-                        });
-                        continue;
-
-                    // HTML标签处理 - 修正：改进HTML标签解析
-                    case 'html_inline':
-                        if (content.includes('<u>')) {
-                            styleStack.push({...currentStyle});
-                            currentStyle = {...currentStyle, underline: true};
-                            continue;
-                        } else if (content.includes('</u>')) {
-                            if (styleStack.length > 0) {
-                                currentStyle = styleStack.pop();
-                            }
-                            continue;
-                        }
-                        // 其他HTML内容作为文本处理
-                        break;
-
-                    // 文本内容
-                    case 'text': 
-                        if (content && content.trim()) {
-                            resultNodes.push({
-                                type: 'text',
-                                text: content,
-                                ...currentStyle
-                            });
-                        }
-                        continue;
-                        
-                    // 链接（自包含）
-                    case 'link':
-                        const linkStyle = { underline: true, color: '#0052D9' };
-                        resultNodes.push({
-                            type: 'text',
-                            text: content,
-                            ...currentStyle,
-                            ...linkStyle
-                        });
-                        continue;
-                        
-                    // 图片处理
-                    case 'image':
-                        content = content || 'image';
-                        resultNodes.push({
-                            type: 'text',
-                            text: content,
-                            ...currentStyle
-                        });
-                        continue;
-
-                    // 其他类型的token，尝试处理子tokens
-                    default:
-                        if (token.children && token.children.length > 0) {
-                            // 递归处理子tokens
-                            const childNodes = this.buildQQNodesFromTokens(token.children);
-                            childNodes.forEach(node => {
-                                resultNodes.push({
-                                    ...node,
-                                    ...currentStyle
-                                });
-                            });
-                        } else if (content && content.trim()) {
-                            // 如果没有子tokens但有内容，作为普通文本处理
-                            resultNodes.push({
-                                type: 'text',
-                                text: content,
-                                ...currentStyle
-                            });
-                        }
-                        continue;
-                }
+        
+        for (const token of tokens) {
+            if (token.type === 'text' && token.content && token.content.trim()) {
+                resultNodes.push({
+                    type: 'text',
+                    text: token.content
+                });
             }
-        };
-
-        processTokens(tokens);
+        }
+        
         return resultNodes;
     }
 
@@ -314,6 +141,11 @@ class RichTextFormatter {
      * @returns {Object} 合并后的样式对象
      */
     mergeStyles(styleStack) {
+        if (this.styleProcessor) {
+            return this.styleProcessor.mergeStyles(styleStack);
+        }
+        
+        // 降级实现
         return styleStack.reduce((acc, style) => ({ ...acc, ...style }), {});
     }
 
@@ -373,6 +205,11 @@ class RichTextFormatter {
         }
         
         // 降级到原始实现
+        if (this.styleProcessor) {
+            return this.styleProcessor.extractQQTextStyles(titleObject);
+        }
+        
+        // 降级实现
         const styles = {};
         
         if (!titleObject?.children) {
@@ -387,10 +224,10 @@ class RichTextFormatter {
                 if (textNode.strike) {
                     styles.strikethrough = true;
                 }
-                if (textNode.italic) { // 修复：使用 italic 而不是 fontStyle
+                if (textNode.italic) {
                     styles.italic = true;
                 }
-                if (textNode.fontWeight === 700) { // 修复：使用数值700
+                if (textNode.fontWeight === 700) {
                     styles.bold = true;
                 }
             });
@@ -405,16 +242,19 @@ class RichTextFormatter {
      * @returns {boolean} 是否有效
      */
     validateRichTextNode(textNode) {
+        if (this.styleProcessor) {
+            return this.styleProcessor.validateRichTextNode(textNode);
+        }
+        
+        // 降级实现
         if (!textNode || typeof textNode !== 'object') {
             return false;
         }
 
-        // 检查必需的属性
         if (typeof textNode.text !== 'string') {
             return false;
         }
 
-        // 检查样式属性的有效性
         const validStyles = ['backgroundColor', 'strike', 'italic', 'fontWeight', 'underline', 'color', 'fontFamily'];
         const nodeKeys = Object.keys(textNode);
         

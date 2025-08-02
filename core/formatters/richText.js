@@ -53,9 +53,63 @@ class RichTextFormatter {
             return '';
         }
 
-        return titleObject.children.flatMap(p => 
+        // 获取所有文本节点
+        const textNodes = titleObject.children.flatMap(p => 
             p.children?.map(textNode => this.applyQQStyles(textNode)) || []
-        ).join('');
+        );
+        
+        // 优化相邻节点的处理
+        return this.optimizeAdjacentNodes(textNodes).join('');
+    }
+
+    /**
+     * 优化相邻节点的处理，避免格式冲突
+     * @param {Array} nodes - 处理后的文本节点数组
+     * @returns {Array} 优化后的文本节点数组
+     */
+    optimizeAdjacentNodes(nodes) {
+        if (nodes.length <= 1) {
+            return nodes;
+        }
+
+        const optimized = [];
+        let i = 0;
+
+        while (i < nodes.length) {
+            const currentNode = nodes[i];
+            const nextNode = nodes[i + 1];
+
+            // 检查当前节点是否以粗体结尾，下一个节点是否以内联代码开始
+            if (nextNode && 
+                currentNode.endsWith('**') && 
+                nextNode.startsWith('`')) {
+                // 在粗体和内联代码之间添加空格
+                optimized.push(currentNode + ' ' + nextNode);
+                i += 2;
+            } 
+            // 检查当前节点是否以内联代码结尾，下一个节点是否以粗体开始
+            else if (nextNode && 
+                     currentNode.endsWith('`') && 
+                     nextNode.startsWith('**')) {
+                // 在内联代码和粗体之间添加空格
+                optimized.push(currentNode + ' ' + nextNode);
+                i += 2;
+            }
+            // 检查当前节点是否以内联代码结尾，下一个节点是否以内联代码开始
+            else if (nextNode && 
+                     currentNode.endsWith('`') && 
+                     nextNode.startsWith('`')) {
+                // 在两个内联代码之间添加空格
+                optimized.push(currentNode + ' ' + nextNode);
+                i += 2;
+            }
+            else {
+                optimized.push(currentNode);
+                i++;
+            }
+        }
+
+        return optimized;
     }
 
     /**
@@ -65,6 +119,21 @@ class RichTextFormatter {
      */
     applyQQStyles(textNode) {
         let content = textNode.text || '';
+        
+        // 检查是否已经包含Markdown格式标记
+        const hasMarkdownFormatting = (text) => {
+            // 检查是否包含反引号（内联代码）
+            if (text.includes('`')) return true;
+            // 检查是否包含粗体标记
+            if (text.includes('**')) return true;
+            // 检查是否包含斜体标记
+            if (text.includes('*') && !text.match(/^\*[^*]+\*$/)) return true;
+            // 检查是否包含删除线标记
+            if (text.includes('~~')) return true;
+            // 检查是否包含高亮标记
+            if (text.includes('==')) return true;
+            return false;
+        };
         
         // 修复：使用正确的属性名称和标准Markdown格式
         if (textNode.backgroundColor === '#FFF3A1') {
@@ -79,7 +148,8 @@ class RichTextFormatter {
             content = `*${content}*`; // 斜体
         }
         
-        if (textNode.fontWeight === 'bold' || textNode.fontWeight === 700) { // 修复：支持字符串和数值
+        // 修复：避免对已经包含Markdown格式的文本重复应用粗体
+        if ((textNode.fontWeight === 'bold' || textNode.fontWeight === 700) && !hasMarkdownFormatting(content)) {
             content = `**${content}**`; // 粗体
         }
         

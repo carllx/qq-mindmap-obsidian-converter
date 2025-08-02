@@ -61,7 +61,15 @@ class NodeManager {
                 children: { attached: [] } 
             };
         } else {
-            const content = lineInfo.content.replace(/^(\s*[-*+>]\s*)/, '');
+            // 修复：正确处理列表项内容
+            let content = lineInfo.content;
+            
+            // 如果是列表项，保留列表标记以便QQtoMD转换时准确识别
+            if (lineInfo.type === 'list' && lineInfo.listMarker) {
+                // 在内容前添加列表标记
+                content = `${lineInfo.listMarker} ${content}`;
+            }
+            
             return { 
                 id: nodeId,
                 title: richTextFormatter.format(content, markdownIt), 

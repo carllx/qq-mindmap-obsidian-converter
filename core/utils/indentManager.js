@@ -79,11 +79,8 @@ class IndentManager {
         // 2. 以列表标记开头（- * + 或 数字.）
         // 3. 列表标记后必须有空格
         // 4. 排除包含特殊字符的标题行（如 "3. 探索 (Explore) ──"）
-        const isList = !isHeader && 
-                      /^\s*([-*+]|\d+\.)\s+/.test(trimmedLine) &&
-                      !trimmedLine.includes('──') && // 排除包含特殊分隔符的行
-                      !trimmedLine.includes('—') &&  // 排除包含破折号的行
-                      !trimmedLine.includes('–');    // 排除包含短横线的行
+        // 5. 排除包含粗体语法的行
+        const isList = this.isValidListLine(line, trimmedLine, isHeader);
         
         return {
             originalIndent: indentText,
@@ -92,6 +89,57 @@ class IndentManager {
             isList: isList,
             isHeader: isHeader
         };
+    }
+
+    /**
+     * 验证是否为有效的列表行
+     * @param {string} line - 原始行
+     * @param {string} trimmedLine - 去除首尾空格的行
+     * @param {boolean} isHeader - 是否为标题
+     * @returns {boolean} 是否为有效列表
+     */
+    isValidListLine(line, trimmedLine, isHeader) {
+        // 如果是标题，不是列表
+        if (isHeader) {
+            return false;
+        }
+
+        // 基本列表匹配模式
+        const basicListMatch = line.match(/^(\s*)([-*+]|\d+\.)\s+(.+)$/);
+        if (!basicListMatch) {
+            return false;
+        }
+
+        const [, indent, marker, content] = basicListMatch;
+        const trimmedContent = content.trim();
+
+        // 排除整行都是粗体语法的情况（这些可能是误判的粗体文本）
+        if (trimmedContent.match(/^[*_]+.*[*_]+$/)) {
+            return false;
+        }
+
+        // 排除包含奇数个*字符且不以*开头的行
+        if (trimmedContent.includes('*') && !trimmedContent.startsWith('*')) {
+            const asteriskCount = (trimmedContent.match(/\*/g) || []).length;
+            if (asteriskCount % 2 === 1) {
+                // 奇数个*字符，可能是粗体语法的一部分
+                return false;
+            }
+        }
+
+        // 排除包含特殊分隔符的行
+        if (trimmedContent.includes('──') || trimmedContent.includes('—') || trimmedContent.includes('–')) {
+            return false;
+        }
+
+        // 验证列表标记后必须有空格
+        const markerEndIndex = line.indexOf(marker) + marker.length;
+        const afterMarker = line.substring(markerEndIndex);
+        if (!afterMarker.startsWith(' ')) {
+            return false;
+        }
+
+        return true;
     }
 
     /**

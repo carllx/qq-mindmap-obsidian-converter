@@ -123,11 +123,8 @@ class IndentManager {
         // 2. 以列表标记开头（- * + 或 数字.）
         // 3. 列表标记后必须有空格
         // 4. 排除包含特殊字符的标题行（如 "3. 探索 (Explore) ──"）
-        const isList = !isHeader && 
-                      /^\s*([-*+]|\d+\.)\s+/.test(trimmedLine) &&
-                      !trimmedLine.includes('──') && // 排除包含特殊分隔符的行
-                      !trimmedLine.includes('—') &&  // 排除包含破折号的行
-                      !trimmedLine.includes('–');    // 排除包含短横线的行
+        // 5. 排除包含粗体语法的行
+        const isList = this.isValidListLine(line, trimmedLine, isHeader);
         
         return {
             originalIndent: indentText,
@@ -136,6 +133,57 @@ class IndentManager {
             isList: isList,
             isHeader: isHeader
         };
+    }
+
+    /**
+     * 验证是否为有效的列表行
+     * @param {string} line - 原始行
+     * @param {string} trimmedLine - 去除首尾空格的行
+     * @param {boolean} isHeader - 是否为标题
+     * @returns {boolean} 是否为有效列表
+     */
+    isValidListLine(line, trimmedLine, isHeader) {
+        // 如果是标题，不是列表
+        if (isHeader) {
+            return false;
+        }
+
+        // 基本列表匹配模式
+        const basicListMatch = line.match(/^(\s*)([-*+]|\d+\.)\s+(.+)$/);
+        if (!basicListMatch) {
+            return false;
+        }
+
+        const [, indent, marker, content] = basicListMatch;
+        const trimmedContent = content.trim();
+
+        // 排除整行都是粗体语法的情况（这些可能是误判的粗体文本）
+        if (trimmedContent.match(/^[*_]+.*[*_]+$/)) {
+            return false;
+        }
+
+        // 排除包含奇数个*字符且不以*开头的行
+        if (trimmedContent.includes('*') && !trimmedContent.startsWith('*')) {
+            const asteriskCount = (trimmedContent.match(/\*/g) || []).length;
+            if (asteriskCount % 2 === 1) {
+                // 奇数个*字符，可能是粗体语法的一部分
+                return false;
+            }
+        }
+
+        // 排除包含特殊分隔符的行
+        if (trimmedContent.includes('──') || trimmedContent.includes('—') || trimmedContent.includes('–')) {
+            return false;
+        }
+
+        // 验证列表标记后必须有空格
+        const markerEndIndex = line.indexOf(marker) + marker.length;
+        const afterMarker = line.substring(markerEndIndex);
+        if (!afterMarker.startsWith(' ')) {
+            return false;
+        }
+
+        return true;
     }
 
     /**
@@ -747,17 +795,56 @@ class RichTextFormatter {
                         }
                         continue;
 
-                    // 内联代码（自包含token）
+                    // 自包含的样式token
+                    case 'strong':
+                        // 处理粗体内容
+                        if (token.children && token.children.length > 0) {
+                            // 递归处理子tokens
+                            const childStyle = {...currentStyle, fontWeight: 700};
+                            const childNodes = this.buildQQNodesFromTokens(token.children);
+                            childNodes.forEach(node => {
+                                resultNodes.push({
+                                    ...node,
+                                    ...childStyle
+                                });
+                            });
+                        } else {
+                            resultNodes.push({
+                                type: 'text',
+                                text: content,
+                                ...currentStyle,
+                                fontWeight: 700
+                            });
+                        }
+                        continue;
+
+                    case 'em':
+                        // 处理斜体内容
+                        if (token.children && token.children.length > 0) {
+                            const childStyle = {...currentStyle, italic: true};
+                            const childNodes = this.buildQQNodesFromTokens(token.children);
+                            childNodes.forEach(node => {
+                                resultNodes.push({
+                                    ...node,
+                                    ...childStyle
+                                });
+                            });
+                        } else {
+                            resultNodes.push({
+                                type: 'text',
+                                text: content,
+                                ...currentStyle,
+                                italic: true
+                            });
+                        }
+                        continue;
+
+                    // 内联代码（自包含token）- 修复：保留backtick标记
                     case 'code_inline':
-                        const codeStyle = { 
-                            fontFamily: 'monospace', 
-                            backgroundColor: '#F0F0F0' 
-                        };
                         resultNodes.push({
                             type: 'text',
-                            text: content,
-                            ...currentStyle,
-                            ...codeStyle
+                            text: `\`${content}\``, // 保留backtick标记
+                            ...currentStyle
                         });
                         continue;
 
@@ -778,7 +865,14 @@ class RichTextFormatter {
 
                     // 文本内容
                     case 'text': 
-                        break;
+                        if (content && content.trim()) {
+                            resultNodes.push({
+                                type: 'text',
+                                text: content,
+                                ...currentStyle
+                            });
+                        }
+                        continue;
                         
                     // 链接（自包含）
                     case 'link':
@@ -794,31 +888,33 @@ class RichTextFormatter {
                     // 图片处理
                     case 'image':
                         content = content || 'image';
-                        break;
-                        
-                    // HTML块
-                    case 'html_block':
-                        break;
-                        
-                    // 处理嵌套的inline token
-                    case 'inline':
-                        if (token.children) {
-                            processTokens(token.children);
+                        resultNodes.push({
+                            type: 'text',
+                            text: content,
+                            ...currentStyle
+                        });
+                        continue;
+
+                    // 其他类型的token，尝试处理子tokens
+                    default:
+                        if (token.children && token.children.length > 0) {
+                            // 递归处理子tokens
+                            const childNodes = this.buildQQNodesFromTokens(token.children);
+                            childNodes.forEach(node => {
+                                resultNodes.push({
+                                    ...node,
+                                    ...currentStyle
+                                });
+                            });
+                        } else if (content && content.trim()) {
+                            // 如果没有子tokens但有内容，作为普通文本处理
+                            resultNodes.push({
+                                type: 'text',
+                                text: content,
+                                ...currentStyle
+                            });
                         }
                         continue;
-                        
-                    default: 
-                        continue;
-                }
-
-                // 处理有内容的token - 修正：使用当前样式状态
-                if (content) {
-                    const textNode = {
-                        type: 'text', 
-                        text: content, 
-                        ...currentStyle
-                    };
-                    resultNodes.push(textNode);
                 }
             }
         };
@@ -1430,7 +1526,15 @@ class NodeManager {
                 children: { attached: [] } 
             };
         } else {
-            const content = lineInfo.content.replace(/^(\s*[-*+>]\s*)/, '');
+            // 修复：正确处理列表项内容
+            let content = lineInfo.content;
+            
+            // 如果是列表项，保留列表标记以便QQtoMD转换时准确识别
+            if (lineInfo.type === 'list' && lineInfo.listMarker) {
+                // 在内容前添加列表标记
+                content = `${lineInfo.listMarker} ${content}`;
+            }
+            
             return { 
                 id: nodeId,
                 title: richTextFormatter.format(content, markdownIt), 
@@ -1929,7 +2033,17 @@ class QQToMarkdownConverter {
             let finalIndent = '';
             
             if (isListItem) {
-                prefix = /^\s*([-*+]|\d+\.)\s+/.test(titleText) ? '' : '- ';
+                // 检查是否已经包含列表标记
+                const listMatch = titleText.match(/^([-*+]|\d+\.)\s+(.+)$/);
+                if (listMatch) {
+                    // 已经包含列表标记，直接使用
+                    prefix = `${listMatch[1]} `;
+                    titleText = listMatch[2]; // 移除列表标记，只保留内容
+                } else {
+                    // 没有列表标记，添加默认的 '- '
+                    prefix = '- ';
+                }
+                
                 // 使用原始缩进信息来决定是否添加缩进
                 const originalIndent = data.originalIndent || 0;
                 if (originalIndent > 0) {
@@ -2361,20 +2475,26 @@ class MarkdownToQQConverter {
             };
         }
         
-        // 检查是否为列表项
-        const listMatch = line.match(/^(\s*)([-*+]|\d+\.)\s+(.+)$/);
+        // 修复：更精确的列表项识别
+        // 1. 确保列表标记后必须有空格
+        // 2. 排除包含粗体语法的情况
+        // 3. 排除包含其他Markdown语法的行
+        const listMatch = this.isValidListItem(line);
         if (listMatch) {
             // 修复：正确计算列表项的缩进级别
             // 列表项的缩进应该包括列表标记前的空格
-            const listIndentText = listMatch[1];
+            const listIndentText = listMatch.indent;
             const listIndent = this.indentManager.calculateIndentLevel(listIndentText);
             
             return {
                 type: 'list',
-                content: listMatch[3],
+                content: listMatch.content, // 这里已经是去除列表标记的内容
                 indent: listIndent,
                 headerLevel: 0,
-                isText: true
+                isText: true,
+                // 新增：保留列表标记信息，用于QQtoMD转换时的准确识别
+                listMarker: listMatch.marker,
+                originalContent: line.trim() // 保留原始内容，包含列表标记
             };
         }
         
@@ -2385,6 +2505,54 @@ class MarkdownToQQConverter {
             indent: indent,
             headerLevel: 0,
             isText: true
+        };
+    }
+
+    /**
+     * 验证是否为有效的列表项
+     * @param {string} line - 原始行
+     * @returns {Object|null} 列表信息或null
+     */
+    isValidListItem(line) {
+        // 基本列表匹配模式
+        const basicListMatch = line.match(/^(\s*)([-*+]|\d+\.)\s+(.+)$/);
+        if (!basicListMatch) {
+            return null;
+        }
+
+        const [, indent, marker, content] = basicListMatch;
+        const trimmedContent = content.trim();
+
+        // 排除整行都是粗体语法的情况（这些可能是误判的粗体文本）
+        if (trimmedContent.match(/^[*_]+.*[*_]+$/)) {
+            return null;
+        }
+
+        // 排除包含奇数个*字符且不以*开头的行
+        if (trimmedContent.includes('*') && !trimmedContent.startsWith('*')) {
+            const asteriskCount = (trimmedContent.match(/\*/g) || []).length;
+            if (asteriskCount % 2 === 1) {
+                // 奇数个*字符，可能是粗体语法的一部分
+                return null;
+            }
+        }
+
+        // 排除包含特殊分隔符的行
+        if (trimmedContent.includes('──') || trimmedContent.includes('—') || trimmedContent.includes('–')) {
+            return null;
+        }
+
+        // 验证列表标记后必须有空格
+        const markerEndIndex = line.indexOf(marker) + marker.length;
+        const afterMarker = line.substring(markerEndIndex);
+        if (!afterMarker.startsWith(' ')) {
+            return null;
+        }
+
+        return {
+            indent: indent,
+            marker: marker,
+            content: trimmedContent
         };
     }
 

@@ -345,20 +345,26 @@ class MarkdownToQQConverter {
             };
         }
         
-        // 检查是否为列表项
-        const listMatch = line.match(/^(\s*)([-*+]|\d+\.)\s+(.+)$/);
+        // 修复：更精确的列表项识别
+        // 1. 确保列表标记后必须有空格
+        // 2. 排除包含粗体语法的情况
+        // 3. 排除包含其他Markdown语法的行
+        const listMatch = this.isValidListItem(line);
         if (listMatch) {
             // 修复：正确计算列表项的缩进级别
             // 列表项的缩进应该包括列表标记前的空格
-            const listIndentText = listMatch[1];
+            const listIndentText = listMatch.indent;
             const listIndent = this.indentManager.calculateIndentLevel(listIndentText);
             
             return {
                 type: 'list',
-                content: listMatch[3],
+                content: listMatch.content, // 这里已经是去除列表标记的内容
                 indent: listIndent,
                 headerLevel: 0,
-                isText: true
+                isText: true,
+                // 新增：保留列表标记信息，用于QQtoMD转换时的准确识别
+                listMarker: listMatch.marker,
+                originalContent: line.trim() // 保留原始内容，包含列表标记
             };
         }
         
@@ -369,6 +375,54 @@ class MarkdownToQQConverter {
             indent: indent,
             headerLevel: 0,
             isText: true
+        };
+    }
+
+    /**
+     * 验证是否为有效的列表项
+     * @param {string} line - 原始行
+     * @returns {Object|null} 列表信息或null
+     */
+    isValidListItem(line) {
+        // 基本列表匹配模式
+        const basicListMatch = line.match(/^(\s*)([-*+]|\d+\.)\s+(.+)$/);
+        if (!basicListMatch) {
+            return null;
+        }
+
+        const [, indent, marker, content] = basicListMatch;
+        const trimmedContent = content.trim();
+
+        // 排除整行都是粗体语法的情况（这些可能是误判的粗体文本）
+        if (trimmedContent.match(/^[*_]+.*[*_]+$/)) {
+            return null;
+        }
+
+        // 排除包含奇数个*字符且不以*开头的行
+        if (trimmedContent.includes('*') && !trimmedContent.startsWith('*')) {
+            const asteriskCount = (trimmedContent.match(/\*/g) || []).length;
+            if (asteriskCount % 2 === 1) {
+                // 奇数个*字符，可能是粗体语法的一部分
+                return null;
+            }
+        }
+
+        // 排除包含特殊分隔符的行
+        if (trimmedContent.includes('──') || trimmedContent.includes('—') || trimmedContent.includes('–')) {
+            return null;
+        }
+
+        // 验证列表标记后必须有空格
+        const markerEndIndex = line.indexOf(marker) + marker.length;
+        const afterMarker = line.substring(markerEndIndex);
+        if (!afterMarker.startsWith(' ')) {
+            return null;
+        }
+
+        return {
+            indent: indent,
+            marker: marker,
+            content: trimmedContent
         };
     }
 

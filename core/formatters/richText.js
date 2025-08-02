@@ -163,17 +163,56 @@ class RichTextFormatter {
                         }
                         continue;
 
-                    // 内联代码（自包含token）
+                    // 自包含的样式token
+                    case 'strong':
+                        // 处理粗体内容
+                        if (token.children && token.children.length > 0) {
+                            // 递归处理子tokens
+                            const childStyle = {...currentStyle, fontWeight: 700};
+                            const childNodes = this.buildQQNodesFromTokens(token.children);
+                            childNodes.forEach(node => {
+                                resultNodes.push({
+                                    ...node,
+                                    ...childStyle
+                                });
+                            });
+                        } else {
+                            resultNodes.push({
+                                type: 'text',
+                                text: content,
+                                ...currentStyle,
+                                fontWeight: 700
+                            });
+                        }
+                        continue;
+
+                    case 'em':
+                        // 处理斜体内容
+                        if (token.children && token.children.length > 0) {
+                            const childStyle = {...currentStyle, italic: true};
+                            const childNodes = this.buildQQNodesFromTokens(token.children);
+                            childNodes.forEach(node => {
+                                resultNodes.push({
+                                    ...node,
+                                    ...childStyle
+                                });
+                            });
+                        } else {
+                            resultNodes.push({
+                                type: 'text',
+                                text: content,
+                                ...currentStyle,
+                                italic: true
+                            });
+                        }
+                        continue;
+
+                    // 内联代码（自包含token）- 修复：保留backtick标记
                     case 'code_inline':
-                        const codeStyle = { 
-                            fontFamily: 'monospace', 
-                            backgroundColor: '#F0F0F0' 
-                        };
                         resultNodes.push({
                             type: 'text',
-                            text: content,
-                            ...currentStyle,
-                            ...codeStyle
+                            text: `\`${content}\``, // 保留backtick标记
+                            ...currentStyle
                         });
                         continue;
 
@@ -194,7 +233,14 @@ class RichTextFormatter {
 
                     // 文本内容
                     case 'text': 
-                        break;
+                        if (content && content.trim()) {
+                            resultNodes.push({
+                                type: 'text',
+                                text: content,
+                                ...currentStyle
+                            });
+                        }
+                        continue;
                         
                     // 链接（自包含）
                     case 'link':
@@ -210,31 +256,33 @@ class RichTextFormatter {
                     // 图片处理
                     case 'image':
                         content = content || 'image';
-                        break;
-                        
-                    // HTML块
-                    case 'html_block':
-                        break;
-                        
-                    // 处理嵌套的inline token
-                    case 'inline':
-                        if (token.children) {
-                            processTokens(token.children);
+                        resultNodes.push({
+                            type: 'text',
+                            text: content,
+                            ...currentStyle
+                        });
+                        continue;
+
+                    // 其他类型的token，尝试处理子tokens
+                    default:
+                        if (token.children && token.children.length > 0) {
+                            // 递归处理子tokens
+                            const childNodes = this.buildQQNodesFromTokens(token.children);
+                            childNodes.forEach(node => {
+                                resultNodes.push({
+                                    ...node,
+                                    ...currentStyle
+                                });
+                            });
+                        } else if (content && content.trim()) {
+                            // 如果没有子tokens但有内容，作为普通文本处理
+                            resultNodes.push({
+                                type: 'text',
+                                text: content,
+                                ...currentStyle
+                            });
                         }
                         continue;
-                        
-                    default: 
-                        continue;
-                }
-
-                // 处理有内容的token - 修正：使用当前样式状态
-                if (content) {
-                    const textNode = {
-                        type: 'text', 
-                        text: content, 
-                        ...currentStyle
-                    };
-                    resultNodes.push(textNode);
                 }
             }
         };

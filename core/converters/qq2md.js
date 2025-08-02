@@ -282,7 +282,17 @@ class QQToMarkdownConverter {
             let finalIndent = '';
             
             if (isListItem) {
-                prefix = /^\s*([-*+]|\d+\.)\s+/.test(titleText) ? '' : '- ';
+                // 检查是否已经包含列表标记
+                const listMatch = titleText.match(/^([-*+]|\d+\.)\s+(.+)$/);
+                if (listMatch) {
+                    // 已经包含列表标记，直接使用
+                    prefix = `${listMatch[1]} `;
+                    titleText = listMatch[2]; // 移除列表标记，只保留内容
+                } else {
+                    // 没有列表标记，添加默认的 '- '
+                    prefix = '- ';
+                }
+                
                 // 使用原始缩进信息来决定是否添加缩进
                 const originalIndent = data.originalIndent || 0;
                 if (originalIndent > 0) {

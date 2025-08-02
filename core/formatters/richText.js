@@ -53,82 +53,26 @@ class RichTextFormatter {
             return '';
         }
 
-        // 获取所有文本节点
-        const textNodes = titleObject.children.flatMap(p => 
+        let result = titleObject.children.flatMap(p => 
             p.children?.map(textNode => this.applyQQStyles(textNode)) || []
-        );
+        ).join('');
         
-        // 智能合并粗体和内联代码
-        let result = this.mergeBoldAndInlineCode(textNodes);
-        
-        return result;
-    }
-
-    /**
-     * 智能合并粗体和内联代码，避免产生多余的星号
-     * @param {Array} textNodes - 文本节点数组
-     * @returns {string} 合并后的文本
-     */
-    mergeBoldAndInlineCode(textNodes) {
-        if (textNodes.length === 0) return '';
-        
-        let result = '';
-        let currentBold = false;
-        
-        for (let i = 0; i < textNodes.length; i++) {
-            const node = textNodes[i];
-            const hasInlineCode = node.includes('`');
-            const isBold = node.includes('**');
-            
-            if (isBold && !hasInlineCode) {
-                // 纯粗体文本
-                if (!currentBold) {
-                    result += '**';
-                    currentBold = true;
-                }
-                result += node.replace(/\*\*/g, '');
-            } else if (hasInlineCode && !isBold) {
-                // 纯内联代码
-                if (currentBold) {
-                    result += '**';
-                    currentBold = false;
-                }
-                result += node;
-            } else if (hasInlineCode && isBold) {
-                // 粗体包含内联代码 - 特殊处理
-                if (!currentBold) {
-                    result += '**';
-                    currentBold = true;
-                }
-                // 移除内联代码的粗体标记，保留反引号
-                result += node.replace(/\*\*/g, '');
-            } else {
-                // 普通文本
-                if (currentBold) {
-                    result += '**';
-                    currentBold = false;
-                }
-                result += node;
-            }
-        }
-        
-        // 关闭未闭合的粗体标记
-        if (currentBold) {
-            result += '**';
-        }
+        // 后处理：修复多余的粗体标记
+        result = this.fixDuplicateBoldMarkers(result);
         
         return result;
     }
 
     /**
-     * 修复粗体文字中包含内联代码时的格式问题
+     * 修复多余的粗体标记
+     * 解决粗体文本中包含内联代码时产生多余星号的问题
      * @param {string} text - 原始文本
      * @returns {string} 修复后的文本
      */
-    fixBoldInlineCodeFormatting(text) {
-        // 匹配模式：**`code`** 或 ****`code`****
-        // 修复为：**`code`**
-        return text.replace(/\*\*\*\*`([^`]+)`\*\*\*\*/g, '**`$1`**');
+    fixDuplicateBoldMarkers(text) {
+        // 匹配连续的粗体节点，插入空格，确保Obsidian正常渲染
+        // 例如：**数据格式：****`距离,归一化值`** -> **数据格式：** **`距离,归一化值`**
+        return text.replace(/\*\*([^*]+)\*\*(?=\*\*)/g, '**$1** ');
     }
 
     /**
@@ -152,21 +96,17 @@ class RichTextFormatter {
             content = `*${content}*`; // 斜体
         }
         
-        // 修复：智能处理粗体和内联代码的组合
-        const isBold = textNode.fontWeight === 'bold' || textNode.fontWeight === 700;
-        const isMonospace = textNode.fontFamily === 'monospace';
-        
-        // 如果同时具有粗体和等宽字体属性，处理为粗体包含内联代码
-        if (isBold && isMonospace) {
-            content = `**\`${content}\`**`; // 粗体包含内联代码
-        } else if (isMonospace) {
-            content = `\`${content}\``; // 内联代码
-        } else if (isBold) {
+        if (textNode.fontWeight === 'bold' || textNode.fontWeight === 700) { // 修复：支持字符串和数值
             content = `**${content}**`; // 粗体
         }
         
         if (textNode.underline) {
             content = `<u>${content}</u>`; // 修复：使用HTML标签而不是[[]]
+        }
+        
+        // 添加对更多格式的支持
+        if (textNode.fontFamily === 'monospace') {
+            content = `\`${content}\``; // 内联代码
         }
         
         if (textNode.color && textNode.color !== '#000000') {
@@ -288,8 +228,8 @@ class RichTextFormatter {
                     case 'code_inline':
                         resultNodes.push({
                             type: 'text',
-                            text: content, // 不添加反引号，让applyQQStyles处理
-                            fontFamily: 'monospace' // 标记为等宽字体，不继承粗体样式
+                            text: `\`${content}\``, // 保留backtick标记
+                            ...currentStyle
                         });
                         continue;
 

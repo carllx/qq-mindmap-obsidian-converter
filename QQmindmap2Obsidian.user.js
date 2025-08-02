@@ -685,63 +685,26 @@ class RichTextFormatter {
             return '';
         }
 
-        // 获取所有文本节点
-        const textNodes = titleObject.children.flatMap(p => 
+        let result = titleObject.children.flatMap(p => 
             p.children?.map(textNode => this.applyQQStyles(textNode)) || []
-        );
+        ).join('');
         
-        // 优化相邻节点的处理
-        return this.optimizeAdjacentNodes(textNodes).join('');
+        // 后处理：修复多余的粗体标记
+        result = this.fixDuplicateBoldMarkers(result);
+        
+        return result;
     }
 
     /**
-     * 优化相邻节点的处理，避免格式冲突
-     * @param {Array} nodes - 处理后的文本节点数组
-     * @returns {Array} 优化后的文本节点数组
+     * 修复多余的粗体标记
+     * 解决粗体文本中包含内联代码时产生多余星号的问题
+     * @param {string} text - 原始文本
+     * @returns {string} 修复后的文本
      */
-    optimizeAdjacentNodes(nodes) {
-        if (nodes.length <= 1) {
-            return nodes;
-        }
-
-        const optimized = [];
-        let i = 0;
-
-        while (i < nodes.length) {
-            const currentNode = nodes[i];
-            const nextNode = nodes[i + 1];
-
-            // 检查当前节点是否以粗体结尾，下一个节点是否以内联代码开始
-            if (nextNode && 
-                currentNode.endsWith('**') && 
-                nextNode.startsWith('`')) {
-                // 在粗体和内联代码之间添加空格
-                optimized.push(currentNode + ' ' + nextNode);
-                i += 2;
-            } 
-            // 检查当前节点是否以内联代码结尾，下一个节点是否以粗体开始
-            else if (nextNode && 
-                     currentNode.endsWith('`') && 
-                     nextNode.startsWith('**')) {
-                // 在内联代码和粗体之间添加空格
-                optimized.push(currentNode + ' ' + nextNode);
-                i += 2;
-            }
-            // 检查当前节点是否以内联代码结尾，下一个节点是否以内联代码开始
-            else if (nextNode && 
-                     currentNode.endsWith('`') && 
-                     nextNode.startsWith('`')) {
-                // 在两个内联代码之间添加空格
-                optimized.push(currentNode + ' ' + nextNode);
-                i += 2;
-            }
-            else {
-                optimized.push(currentNode);
-                i++;
-            }
-        }
-
-        return optimized;
+    fixDuplicateBoldMarkers(text) {
+        // 匹配连续的粗体节点，插入空格，确保Obsidian正常渲染
+        // 例如：**数据格式：****`距离,归一化值`** -> **数据格式：** **`距离,归一化值`**
+        return text.replace(/\*\*([^*]+)\*\*(?=\*\*)/g, '**$1** ');
     }
 
     /**
@@ -751,16 +714,6 @@ class RichTextFormatter {
      */
     applyQQStyles(textNode) {
         let content = textNode.text || '';
-        
-        // 检查是否已经包含Markdown格式标记
-        const hasMarkdownFormatting = (text) => {
-            if (text.includes('`')) return true;
-            if (text.includes('**')) return true;
-            if (text.includes('*') && !text.match(/^\*[^*]+\*$/)) return true;
-            if (text.includes('~~')) return true;
-            if (text.includes('==')) return true;
-            return false;
-        };
         
         // 修复：使用正确的属性名称和标准Markdown格式
         if (textNode.backgroundColor === '#FFF3A1') {
@@ -775,23 +728,17 @@ class RichTextFormatter {
             content = `*${content}*`; // 斜体
         }
         
-        // 修复：正确处理内联代码和粗体的优先级
-        const isBold = textNode.fontWeight === 'bold' || textNode.fontWeight === 700;
-        const isMonospace = textNode.fontFamily === 'monospace';
-        
-        if (isMonospace && isBold) {
-            // 如果同时是粗体和内联代码，优先应用内联代码格式
-            content = `\`${content}\``;
-        } else if (isBold && !hasMarkdownFormatting(content)) {
-            // 只有粗体，且不包含已有格式
-            content = `**${content}**`;
-        } else if (isMonospace) {
-            // 只有内联代码
-            content = `\`${content}\``;
+        if (textNode.fontWeight === 'bold' || textNode.fontWeight === 700) { // 修复：支持字符串和数值
+            content = `**${content}**`; // 粗体
         }
         
         if (textNode.underline) {
             content = `<u>${content}</u>`; // 修复：使用HTML标签而不是[[]]
+        }
+        
+        // 添加对更多格式的支持
+        if (textNode.fontFamily === 'monospace') {
+            content = `\`${content}\``; // 内联代码
         }
         
         if (textNode.color && textNode.color !== '#000000') {

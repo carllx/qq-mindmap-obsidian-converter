@@ -754,15 +754,10 @@ class RichTextFormatter {
         
         // 检查是否已经包含Markdown格式标记
         const hasMarkdownFormatting = (text) => {
-            // 检查是否包含反引号（内联代码）
             if (text.includes('`')) return true;
-            // 检查是否包含粗体标记
             if (text.includes('**')) return true;
-            // 检查是否包含斜体标记
             if (text.includes('*') && !text.match(/^\*[^*]+\*$/)) return true;
-            // 检查是否包含删除线标记
             if (text.includes('~~')) return true;
-            // 检查是否包含高亮标记
             if (text.includes('==')) return true;
             return false;
         };
@@ -780,18 +775,23 @@ class RichTextFormatter {
             content = `*${content}*`; // 斜体
         }
         
-        // 修复：避免对已经包含Markdown格式的文本重复应用粗体
-        if ((textNode.fontWeight === 'bold' || textNode.fontWeight === 700) && !hasMarkdownFormatting(content)) {
-            content = `**${content}**`; // 粗体
+        // 修复：正确处理内联代码和粗体的优先级
+        const isBold = textNode.fontWeight === 'bold' || textNode.fontWeight === 700;
+        const isMonospace = textNode.fontFamily === 'monospace';
+        
+        if (isMonospace && isBold) {
+            // 如果同时是粗体和内联代码，优先应用内联代码格式
+            content = `\`${content}\``;
+        } else if (isBold && !hasMarkdownFormatting(content)) {
+            // 只有粗体，且不包含已有格式
+            content = `**${content}**`;
+        } else if (isMonospace) {
+            // 只有内联代码
+            content = `\`${content}\``;
         }
         
         if (textNode.underline) {
             content = `<u>${content}</u>`; // 修复：使用HTML标签而不是[[]]
-        }
-        
-        // 添加对更多格式的支持
-        if (textNode.fontFamily === 'monospace') {
-            content = `\`${content}\``; // 内联代码
         }
         
         if (textNode.color && textNode.color !== '#000000') {

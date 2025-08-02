@@ -58,58 +58,77 @@ class RichTextFormatter {
             p.children?.map(textNode => this.applyQQStyles(textNode)) || []
         );
         
-        // 优化相邻节点的处理
-        return this.optimizeAdjacentNodes(textNodes).join('');
+        // 智能合并粗体和内联代码
+        let result = this.mergeBoldAndInlineCode(textNodes);
+        
+        return result;
     }
 
     /**
-     * 优化相邻节点的处理，避免格式冲突
-     * @param {Array} nodes - 处理后的文本节点数组
-     * @returns {Array} 优化后的文本节点数组
+     * 智能合并粗体和内联代码，避免产生多余的星号
+     * @param {Array} textNodes - 文本节点数组
+     * @returns {string} 合并后的文本
      */
-    optimizeAdjacentNodes(nodes) {
-        if (nodes.length <= 1) {
-            return nodes;
+    mergeBoldAndInlineCode(textNodes) {
+        if (textNodes.length === 0) return '';
+        
+        let result = '';
+        let currentBold = false;
+        
+        for (let i = 0; i < textNodes.length; i++) {
+            const node = textNodes[i];
+            const hasInlineCode = node.includes('`');
+            const isBold = node.includes('**');
+            
+            if (isBold && !hasInlineCode) {
+                // 纯粗体文本
+                if (!currentBold) {
+                    result += '**';
+                    currentBold = true;
+                }
+                result += node.replace(/\*\*/g, '');
+            } else if (hasInlineCode && !isBold) {
+                // 纯内联代码
+                if (currentBold) {
+                    result += '**';
+                    currentBold = false;
+                }
+                result += node;
+            } else if (hasInlineCode && isBold) {
+                // 粗体包含内联代码 - 特殊处理
+                if (!currentBold) {
+                    result += '**';
+                    currentBold = true;
+                }
+                // 移除内联代码的粗体标记，保留反引号
+                result += node.replace(/\*\*/g, '');
+            } else {
+                // 普通文本
+                if (currentBold) {
+                    result += '**';
+                    currentBold = false;
+                }
+                result += node;
+            }
         }
-
-        const optimized = [];
-        let i = 0;
-
-        while (i < nodes.length) {
-            const currentNode = nodes[i];
-            const nextNode = nodes[i + 1];
-
-            // 检查当前节点是否以粗体结尾，下一个节点是否以内联代码开始
-            if (nextNode && 
-                currentNode.endsWith('**') && 
-                nextNode.startsWith('`')) {
-                // 在粗体和内联代码之间添加空格
-                optimized.push(currentNode + ' ' + nextNode);
-                i += 2;
-            } 
-            // 检查当前节点是否以内联代码结尾，下一个节点是否以粗体开始
-            else if (nextNode && 
-                     currentNode.endsWith('`') && 
-                     nextNode.startsWith('**')) {
-                // 在内联代码和粗体之间添加空格
-                optimized.push(currentNode + ' ' + nextNode);
-                i += 2;
-            }
-            // 检查当前节点是否以内联代码结尾，下一个节点是否以内联代码开始
-            else if (nextNode && 
-                     currentNode.endsWith('`') && 
-                     nextNode.startsWith('`')) {
-                // 在两个内联代码之间添加空格
-                optimized.push(currentNode + ' ' + nextNode);
-                i += 2;
-            }
-            else {
-                optimized.push(currentNode);
-                i++;
-            }
+        
+        // 关闭未闭合的粗体标记
+        if (currentBold) {
+            result += '**';
         }
+        
+        return result;
+    }
 
-        return optimized;
+    /**
+     * 修复粗体文字中包含内联代码时的格式问题
+     * @param {string} text - 原始文本
+     * @returns {string} 修复后的文本
+     */
+    fixBoldInlineCodeFormatting(text) {
+        // 匹配模式：**`code`** 或 ****`code`****
+        // 修复为：**`code`**
+        return text.replace(/\*\*\*\*`([^`]+)`\*\*\*\*/g, '**`$1`**');
     }
 
     /**
@@ -119,21 +138,6 @@ class RichTextFormatter {
      */
     applyQQStyles(textNode) {
         let content = textNode.text || '';
-        
-        // 检查是否已经包含Markdown格式标记
-        const hasMarkdownFormatting = (text) => {
-            // 检查是否包含反引号（内联代码）
-            if (text.includes('`')) return true;
-            // 检查是否包含粗体标记
-            if (text.includes('**')) return true;
-            // 检查是否包含斜体标记
-            if (text.includes('*') && !text.match(/^\*[^*]+\*$/)) return true;
-            // 检查是否包含删除线标记
-            if (text.includes('~~')) return true;
-            // 检查是否包含高亮标记
-            if (text.includes('==')) return true;
-            return false;
-        };
         
         // 修复：使用正确的属性名称和标准Markdown格式
         if (textNode.backgroundColor === '#FFF3A1') {
@@ -148,18 +152,21 @@ class RichTextFormatter {
             content = `*${content}*`; // 斜体
         }
         
-        // 修复：避免对已经包含Markdown格式的文本重复应用粗体
-        if ((textNode.fontWeight === 'bold' || textNode.fontWeight === 700) && !hasMarkdownFormatting(content)) {
+        // 修复：智能处理粗体和内联代码的组合
+        const isBold = textNode.fontWeight === 'bold' || textNode.fontWeight === 700;
+        const isMonospace = textNode.fontFamily === 'monospace';
+        
+        // 如果同时具有粗体和等宽字体属性，处理为粗体包含内联代码
+        if (isBold && isMonospace) {
+            content = `**\`${content}\`**`; // 粗体包含内联代码
+        } else if (isMonospace) {
+            content = `\`${content}\``; // 内联代码
+        } else if (isBold) {
             content = `**${content}**`; // 粗体
         }
         
         if (textNode.underline) {
             content = `<u>${content}</u>`; // 修复：使用HTML标签而不是[[]]
-        }
-        
-        // 添加对更多格式的支持
-        if (textNode.fontFamily === 'monospace') {
-            content = `\`${content}\``; // 内联代码
         }
         
         if (textNode.color && textNode.color !== '#000000') {
@@ -281,8 +288,8 @@ class RichTextFormatter {
                     case 'code_inline':
                         resultNodes.push({
                             type: 'text',
-                            text: `\`${content}\``, // 保留backtick标记
-                            ...currentStyle
+                            text: content, // 不添加反引号，让applyQQStyles处理
+                            fontFamily: 'monospace' // 标记为等宽字体，不继承粗体样式
                         });
                         continue;
 

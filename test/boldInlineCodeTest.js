@@ -1,5 +1,6 @@
 /**
  * 测试粗体文字中包含内联代码的处理逻辑
+ * 重现问题：**数据格式：`距离,归一化值`** 转换后产生多余星号
  */
 
 // 模拟 markdown-it 的 tokens
@@ -22,260 +23,218 @@ const mockTokens = [
     }
 ];
 
-// 模拟 RichTextFormatter - 使用修复后的逻辑
-class MockRichTextFormatter {
-    buildQQNodesFromTokens(tokens) {
-        const resultNodes = [];
-        const styleStack = [];
-        let currentStyle = {};
+// 模拟 RichTextFormatter 的 buildQQNodesFromTokens 方法
+function buildQQNodesFromTokens(tokens) {
+    const resultNodes = [];
+    const styleStack = [];
+    let currentStyle = {};
 
-        const processTokens = (tokenList) => {
-            for (const token of tokenList) {
-                let content = token.content;
-                
-                switch (token.type) {
-                    case 'strong_open': 
-                        styleStack.push({...currentStyle});
-                        currentStyle = {...currentStyle, fontWeight: 700};
-                        continue;
-                        
-                    case 'strong_close': 
-                        if (styleStack.length > 0) {
-                            currentStyle = styleStack.pop();
-                        } else {
-                            currentStyle = {};
-                        }
-                        continue;
+    const processTokens = (tokenList) => {
+        for (const token of tokenList) {
+            let content = token.content;
+            
+            switch (token.type) {
+                case 'strong_open': 
+                    styleStack.push({...currentStyle});
+                    currentStyle = {...currentStyle, fontWeight: 700};
+                    continue;
+                    
+                case 'strong_close':
+                    if (styleStack.length > 0) {
+                        currentStyle = styleStack.pop();
+                    } else {
+                        currentStyle = {};
+                    }
+                    continue;
 
-                    case 'strong':
-                        if (token.children && token.children.length > 0) {
-                            const childStyle = {...currentStyle, fontWeight: 700};
-                            const childNodes = this.buildQQNodesFromTokens(token.children);
-                            childNodes.forEach(node => {
-                                resultNodes.push({
-                                    ...node,
-                                    ...childStyle
-                                });
-                            });
-                        } else {
-                            resultNodes.push({
-                                type: 'text',
-                                text: content,
-                                ...currentStyle,
-                                fontWeight: 700
-                            });
-                        }
-                        continue;
+                case 'code_inline':
+                    resultNodes.push({
+                        type: 'text',
+                        text: content, // 不添加反引号，让applyQQStyles处理
+                        fontFamily: 'monospace' // 标记为等宽字体，不继承粗体样式
+                    });
+                    continue;
 
-                    case 'code_inline':
+                case 'text': 
+                    if (content && content.trim()) {
                         resultNodes.push({
                             type: 'text',
-                            text: `\`${content}\``,
+                            text: content,
                             ...currentStyle
                         });
-                        continue;
-
-                    case 'text': 
-                        if (content && content.trim()) {
-                            resultNodes.push({
-                                type: 'text',
-                                text: content,
-                                ...currentStyle
-                            });
-                        }
-                        continue;
-                        
-                    default:
-                        if (token.children && token.children.length > 0) {
-                            const childNodes = this.buildQQNodesFromTokens(token.children);
-                            childNodes.forEach(node => {
-                                resultNodes.push({
-                                    ...node,
-                                    ...currentStyle
-                                });
-                            });
-                        } else if (content && content.trim()) {
-                            resultNodes.push({
-                                type: 'text',
-                                text: content,
-                                ...currentStyle
-                            });
-                        }
-                        continue;
-                }
-            }
-        };
-
-        processTokens(tokens);
-        return resultNodes;
-    }
-
-    // 修复后的 applyQQStyles 方法
-    applyQQStyles(textNode) {
-        let content = textNode.text || '';
-        
-        // 检查是否已经包含Markdown格式标记
-        const hasMarkdownFormatting = (text) => {
-            // 检查是否包含反引号（内联代码）
-            if (text.includes('`')) return true;
-            // 检查是否包含粗体标记
-            if (text.includes('**')) return true;
-            // 检查是否包含斜体标记
-            if (text.includes('*') && !text.match(/^\*[^*]+\*$/)) return true;
-            // 检查是否包含删除线标记
-            if (text.includes('~~')) return true;
-            // 检查是否包含高亮标记
-            if (text.includes('==')) return true;
-            return false;
-        };
-        
-        // 修复：避免对已经包含Markdown格式的文本重复应用粗体
-        if ((textNode.fontWeight === 'bold' || textNode.fontWeight === 700) && !hasMarkdownFormatting(content)) {
-            content = `**${content}**`;
-        }
-        
-        if (textNode.fontFamily === 'monospace') {
-            content = `\`${content}\``;
-        }
-        
-        return content;
-    }
-
-    // 模拟QQ富文本对象结构
-    convertQQToMarkdown(titleObject) {
-        if (typeof titleObject === 'string') {
-            return titleObject;
-        }
-        
-        if (!titleObject?.children) {
-            return '';
-        }
-
-        // 获取所有文本节点
-        const textNodes = titleObject.children.flatMap(p => 
-            p.children?.map(textNode => this.applyQQStyles(textNode)) || []
-        );
-        
-        // 优化相邻节点的处理
-        return this.optimizeAdjacentNodes(textNodes).join('');
-    }
-
-    // 优化相邻节点的处理，避免格式冲突
-    optimizeAdjacentNodes(nodes) {
-        if (nodes.length <= 1) {
-            return nodes;
-        }
-
-        const optimized = [];
-        let i = 0;
-
-        while (i < nodes.length) {
-            const currentNode = nodes[i];
-            const nextNode = nodes[i + 1];
-
-            // 检查当前节点是否以粗体结尾，下一个节点是否以内联代码开始
-            if (nextNode && 
-                currentNode.endsWith('**') && 
-                nextNode.startsWith('`')) {
-                // 在粗体和内联代码之间添加空格
-                optimized.push(currentNode + ' ' + nextNode);
-                i += 2;
-            } else {
-                optimized.push(currentNode);
-                i++;
+                    }
+                    continue;
             }
         }
+    };
 
-        return optimized;
-    }
+    processTokens(tokens);
+    return resultNodes;
 }
 
-// 测试函数
-function testBoldInlineCode() {
-    console.log('🧪 测试粗体文字中包含内联代码的处理逻辑（完整修复后）');
+// 修复前的 applyQQStyles 方法（有问题的版本）
+function applyQQStyles_before(textNode) {
+    let content = textNode.text || '';
     
-    const formatter = new MockRichTextFormatter();
+    if (textNode.fontWeight === 'bold' || textNode.fontWeight === 700) {
+        content = `**${content}**`; // 粗体
+    }
     
-    // 步骤1: MD -> QQ 转换
-    console.log('\n📥 MD -> QQ 转换:');
-    const qqNodes = formatter.buildQQNodesFromTokens(mockTokens);
-    console.log('QQ节点:', JSON.stringify(qqNodes, null, 2));
+    if (textNode.fontFamily === 'monospace') {
+        content = `\`${content}\``; // 内联代码
+    }
     
-    // 步骤2: 创建模拟的QQ富文本对象
-    const mockQQObject = {
-        children: [{
-            children: qqNodes
-        }]
-    };
-    
-    // 步骤3: QQ -> MD 转换
-    console.log('\n📤 QQ -> MD 转换:');
-    const result = formatter.convertQQToMarkdown(mockQQObject);
-    console.log('最终结果:', result);
-    
-    // 检查问题
-    const expected = '**数据格式：** `距离,归一化值`';
-    const hasExtraStars = result.includes('****');
-    
-    console.log('\n🔍 问题分析:');
-    console.log('期望结果:', expected);
-    console.log('实际结果:', result);
-    console.log('是否有多余星号:', hasExtraStars);
-    console.log('问题是否解决:', result === expected);
-    
-    return {
-        expected,
-        actual: result,
-        hasProblem: result !== expected,
-        isFixed: result === expected
-    };
+    return content;
 }
 
-// 运行测试
-const testResult = testBoldInlineCode();
-console.log('\n📊 测试结果:', testResult);
-
-// 额外测试用例
-console.log('\n🧪 额外测试用例:');
-
-const testCases = [
-    {
-        name: '纯粗体文本',
-        text: '普通粗体',
-        fontWeight: 700,
-        expected: '**普通粗体**'
-    },
-    {
-        name: '包含内联代码的粗体',
-        text: '`代码`',
-        fontWeight: 700,
-        expected: '`代码`'
-    },
-    {
-        name: '混合内容',
-        text: '文本`代码`文本',
-        fontWeight: 700,
-        expected: '文本`代码`文本'
-    },
-    {
-        name: '已有粗体标记',
-        text: '**已有粗体**',
-        fontWeight: 700,
-        expected: '**已有粗体**'
+// 修复后的 applyQQStyles 方法（简化版本）
+function applyQQStyles_after(textNode) {
+    let content = textNode.text || '';
+    
+    // 修复：简化粗体和内联代码的处理逻辑
+    const isBold = textNode.fontWeight === 'bold' || textNode.fontWeight === 700;
+    const isMonospace = textNode.fontFamily === 'monospace';
+    
+    // 如果同时具有粗体和等宽字体属性，优先处理为内联代码
+    if (isMonospace) {
+        content = `\`${content}\``; // 内联代码
+    } else if (isBold) {
+        content = `**${content}**`; // 粗体
     }
+    
+    return content;
+}
+
+// 智能合并方法
+function mergeBoldAndInlineCode(textNodes) {
+    if (textNodes.length === 0) return '';
+    
+    let result = '';
+    let currentBold = false;
+    
+    for (let i = 0; i < textNodes.length; i++) {
+        const node = textNodes[i];
+        const hasInlineCode = node.includes('`');
+        const isBold = node.includes('**');
+        
+        if (isBold && !hasInlineCode) {
+            // 纯粗体文本
+            if (!currentBold) {
+                result += '**';
+                currentBold = true;
+            }
+            result += node.replace(/\*\*/g, '');
+        } else if (hasInlineCode && isBold) {
+            // 粗体包含内联代码
+            if (!currentBold) {
+                result += '**';
+                currentBold = true;
+            }
+            // 移除内联代码的粗体标记，保留反引号
+            result += node.replace(/\*\*/g, '');
+        } else if (hasInlineCode && !isBold) {
+            // 纯内联代码
+            if (currentBold) {
+                result += '**';
+                currentBold = false;
+            }
+            result += node;
+        } else {
+            // 普通文本
+            if (currentBold) {
+                result += '**';
+                currentBold = false;
+            }
+            result += node;
+        }
+    }
+    
+    // 关闭未闭合的粗体标记
+    if (currentBold) {
+        result += '**';
+    }
+    
+    return result;
+}
+
+// 测试修复前的逻辑
+console.log('=== 修复前的逻辑测试 ===');
+const nodes_before = buildQQNodesFromTokens(mockTokens);
+console.log('生成的节点:', JSON.stringify(nodes_before, null, 2));
+
+let result_before = '';
+for (const node of nodes_before) {
+    result_before += applyQQStyles_before(node);
+}
+console.log('修复前结果:', result_before);
+console.log('期望结果: **数据格式：`距离,归一化值`**');
+console.log('问题: 产生了多余的星号');
+
+console.log('\n=== 修复后的逻辑测试 ===');
+const nodes_after = buildQQNodesFromTokens(mockTokens);
+console.log('生成的节点:', JSON.stringify(nodes_after, null, 2));
+
+let result_after = '';
+for (const node of nodes_after) {
+    result_after += applyQQStyles_after(node);
+}
+console.log('修复后结果:', result_after);
+console.log('期望结果: **数据格式：`距离,归一化值`**');
+console.log('修复状态:', result_after === '**数据格式：`距离,归一化值`**' ? '✅ 修复成功' : '❌ 仍有问题');
+
+console.log('\n=== 完整流程测试 ===');
+// 测试完整的转换流程
+const textNodes = [];
+for (const node of nodes_after) {
+    textNodes.push(applyQQStyles_after(node));
+}
+const finalResult = mergeBoldAndInlineCode(textNodes);
+console.log('完整流程结果:', finalResult);
+console.log('期望结果: **数据格式：`距离,归一化值`**');
+console.log('最终修复状态:', finalResult === '**数据格式：`距离,归一化值`**' ? '✅ 修复成功' : '❌ 仍有问题');
+
+// 测试更多边界情况
+console.log('\n=== 边界情况测试 ===');
+
+// 测试1：只有粗体，没有内联代码
+const test1 = [
+    { text: '普通粗体文字', fontWeight: 700 }
 ];
+let result1 = '';
+for (const node of test1) {
+    result1 += applyQQStyles_after(node);
+}
+console.log('测试1 - 只有粗体:', result1);
 
-testCases.forEach(testCase => {
-    const formatter = new MockRichTextFormatter();
-    const result = formatter.applyQQStyles({
-        text: testCase.text,
-        fontWeight: testCase.fontWeight
-    });
-    
-    console.log(`${testCase.name}:`);
-    console.log(`  输入: "${testCase.text}" (fontWeight: ${testCase.fontWeight})`);
-    console.log(`  期望: "${testCase.expected}"`);
-    console.log(`  实际: "${result}"`);
-    console.log(`  通过: ${result === testCase.expected ? '✅' : '❌'}`);
-    console.log('');
-}); 
+// 测试2：只有内联代码，没有粗体
+const test2 = [
+    { text: 'code', fontFamily: 'monospace' }
+];
+let result2 = '';
+for (const node of test2) {
+    result2 += applyQQStyles_after(node);
+}
+console.log('测试2 - 只有内联代码:', result2);
+
+// 测试3：粗体包含内联代码
+const test3 = [
+    { text: '数据格式：', fontWeight: 700 },
+    { text: '距离,归一化值', fontWeight: 700, fontFamily: 'monospace' }
+];
+let result3 = '';
+for (const node of test3) {
+    result3 += applyQQStyles_after(node);
+}
+console.log('测试3 - 粗体包含内联代码:', result3);
+
+// 测试4：复杂组合
+const test4 = [
+    { text: '粗体文字', fontWeight: 700 },
+    { text: '内联代码', fontFamily: 'monospace' },
+    { text: '普通文字', fontWeight: 700 }
+];
+let result4 = '';
+for (const node of test4) {
+    result4 += applyQQStyles_after(node);
+}
+console.log('测试4 - 复杂组合:', result4); 

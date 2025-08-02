@@ -24,8 +24,7 @@ class StyleProcessor {
             strikethrough: { strike: true },
             italic: { italic: true },
             bold: { fontWeight: 700 },
-            wikilink: { underline: true, color: '#0052D9' },
-            link: { underline: true, color: '#0052D9' },
+            // 移除链接样式映射，保持原始Markdown格式
             code: { fontFamily: 'monospace', backgroundColor: '#F0F0F0' }
         };
 
@@ -133,6 +132,7 @@ class StyleProcessor {
         const resultNodes = [];
         const styleStack = [];
         let currentStyle = {};
+        let linkUrl = null; // 添加链接URL存储
 
         // 递归处理嵌套的tokens
         const processTokens = (tokenList) => {
@@ -165,7 +165,13 @@ class StyleProcessor {
                     case 'wikilink_open': 
                     case 'link_open': 
                         styleStack.push({...currentStyle});
-                        currentStyle = {...currentStyle, underline: true, color: '#0052D9'};
+                        // 移除链接样式处理，不添加下划线和颜色
+                        // currentStyle = {...currentStyle, underline: true, color: '#0052D9'};
+                        // 保存链接URL信息
+                        if (token.attrs) {
+                            const hrefAttr = token.attrs.find(attr => attr[0] === 'href');
+                            linkUrl = hrefAttr ? hrefAttr[1] : null;
+                        }
                         continue;
 
                     // 关闭标签 - 恢复到上一个样式状态
@@ -179,6 +185,10 @@ class StyleProcessor {
                             currentStyle = styleStack.pop();
                         } else {
                             currentStyle = {};
+                        }
+                        // 清除链接URL信息
+                        if (token.type === 'link_close' || token.type === 'wikilink_close') {
+                            linkUrl = null;
                         }
                         continue;
 
@@ -253,23 +263,41 @@ class StyleProcessor {
                     // 文本内容
                     case 'text': 
                         if (content && content.trim()) {
+                            // 如果当前在链接中且有URL，重建完整的Markdown链接格式
+                            if (linkUrl) {
+                                resultNodes.push({
+                                    type: 'text',
+                                    text: `[${content}](${linkUrl})`,
+                                    ...currentStyle
+                                });
+                            } else {
+                                resultNodes.push({
+                                    type: 'text',
+                                    text: content,
+                                    ...currentStyle
+                                });
+                            }
+                        }
+                        continue;
+                        
+                    // 链接（自包含）- 这种情况通常不会出现，因为链接通常被解析为link_open + text + link_close
+                    case 'link':
+                        // 移除链接样式处理
+                        // const linkStyle = { underline: true, color: '#0052D9' };
+                        // 如果有URL信息，重建完整的Markdown链接格式
+                        if (linkUrl) {
+                            resultNodes.push({
+                                type: 'text',
+                                text: `[${content}](${linkUrl})`,
+                                ...currentStyle
+                            });
+                        } else {
                             resultNodes.push({
                                 type: 'text',
                                 text: content,
                                 ...currentStyle
                             });
                         }
-                        continue;
-                        
-                    // 链接（自包含）
-                    case 'link':
-                        const linkStyle = { underline: true, color: '#0052D9' };
-                        resultNodes.push({
-                            type: 'text',
-                            text: content,
-                            ...currentStyle,
-                            ...linkStyle
-                        });
                         continue;
                         
                     // 图片处理

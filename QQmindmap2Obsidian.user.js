@@ -1,9 +1,12 @@
 // ==UserScript==
 // @name         QQ Mind Map to Obsidian Converter (Simple)
 // @namespace    http://tampermonkey.net/
-// @version      2.0.0
+// @version      2.0.20250808.095155
+// @updateURL      https://gist.githubusercontent.com/carllx/481c282bd808552229e305ce50c1d832/raw/QQmindmap2Obsidian.user.js
+// @downloadURL   https://gist.githubusercontent.com/carllx/481c282bd808552229e305ce50c1d832/raw/QQmindmap2Obsidian.user.js
 // @description  Bidirectional conversion between QQ Mind Map and Obsidian Markdown
-// @author       Your Name
+// @author       carllx
+// @icon         https://docs.gtimg.com/docs-design-resources/document-management/tencent-docs/favicon/application-vnd.tdocs-apps.mind.png?ver=1
 // @match        *://naotu.qq.com/mindcal/*
 // @match        *://docs.qq.com/mind/*
 // @grant        GM_setClipboard
@@ -2344,6 +2347,23 @@ class QQToMarkdownConverter {
                 } else {
                     markdown += this.convertNode(child, indent + 1, true);
                 }
+            }
+        }
+
+        // 处理普通节点的notes内容 - 修复notes丢失问题
+        if (data.notes?.content && 
+            data.title !== this.PRESENTATION_NODE_TITLE && 
+            !data.images && 
+            !data.labels?.some(l => l.text === 'code-block')) {
+            const notesText = this.convertNoteHtmlToPlainText(data.notes.content).trim();
+            if (notesText) {
+                markdown += `
+
+<!--
+${notesText}
+-->
+
+`;
             }
         }
 

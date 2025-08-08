@@ -4,6 +4,10 @@
   "description": "Converts QQ Mind Map to Obsidian Markdown and vice-versa",
   "main": "QQmindmap2Obsidian.user.js",
   "scripts": {
+    "build": "node build.js",
+    "deploy": "node build.js --deploy",
+    "verify": "node verify-update.js",
+    "dev": "npm run deploy && npm run verify",
     "test": "node test/runTests.js",
     "test:basic": "node test/runTests.js --basic-only",
     "test:perf": "node test/runTests.js --no-performance",

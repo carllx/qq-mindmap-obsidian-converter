@@ -3,7 +3,8 @@
 // @namespace    http://tampermonkey.net/
 // @version      2.0.0
 // @description  Bidirectional conversion between QQ Mind Map and Obsidian Markdown
-// @author       Your Name
+// @author       carllx
+// @icon         https://docs.gtimg.com/docs-design-resources/document-management/tencent-docs/favicon/application-vnd.tdocs-apps.mind.png?ver=1
 // @match        *://naotu.qq.com/mindcal/*
 // @match        *://docs.qq.com/mind/*
 // @grant        GM_setClipboard

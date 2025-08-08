@@ -37,4 +37,12 @@ test/*.md
 
 # Backup files
 *.bak
-*.backup 
+*.backup
+
+# Environment variables
+.env
+.env.local
+.env.production
+
+# Deployment temporary files
+temp-deploy/ 

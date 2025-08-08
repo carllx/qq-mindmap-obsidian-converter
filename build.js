@@ -86,5 +86,33 @@ function extractClassName(content) {
     return classMatch ? classMatch[1] : 'UnknownClass';
 }
 
+// 解析命令行参数
+const args = process.argv.slice(2);
+const shouldDeploy = args.includes('--deploy') || args.includes('-d');
+const deployTarget = args.find(arg => arg.startsWith('--target='))?.split('=')[1] || 'gist';
+
 // 执行构建
-buildUserScript(); 
+buildUserScript();
+
+// 如果指定了部署选项，则自动部署
+if (shouldDeploy) {
+    console.log(`\n🚀 开始自动部署到 ${deployTarget}...`);
+    
+    try {
+        if (deployTarget === 'pages' || deployTarget === 'github-pages') {
+            const AutoDeployer = require('./deploy.js');
+            const deployer = new AutoDeployer();
+            deployer.deploy();
+        } else if (deployTarget === 'gist') {
+            const GistDeployer = require('./deploy-gist.js');
+            const deployer = new GistDeployer();
+            deployer.deploy();
+        } else {
+            console.error('❌ 不支持的部署目标:', deployTarget);
+            console.log('💡 支持的目标: gist, pages');
+        }
+    } catch (error) {
+        console.error('❌ 自动部署失败:', error.message);
+        console.log('💡 请手动运行部署脚本');
+    }
+} 

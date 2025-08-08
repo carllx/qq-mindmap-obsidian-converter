@@ -323,6 +323,23 @@ class QQToMarkdownConverter {
             }
         }
 
+        // 处理普通节点的notes内容 - 修复notes丢失问题
+        if (data.notes?.content && 
+            data.title !== this.PRESENTATION_NODE_TITLE && 
+            !data.images && 
+            !data.labels?.some(l => l.text === 'code-block')) {
+            const notesText = this.convertNoteHtmlToPlainText(data.notes.content).trim();
+            if (notesText) {
+                markdown += `
+
+<!--
+${notesText}
+-->
+
+`;
+            }
+        }
+
         return markdown;
     }
 

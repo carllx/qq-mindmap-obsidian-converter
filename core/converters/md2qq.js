@@ -243,12 +243,37 @@ class MarkdownToQQConverter {
                         data: {
                             id: this.generateNodeId(),
                             title: this.PRESENTATION_NODE_TITLE,
-                            notes: { content: commentContent.join('\n') },
+                            notes: { content: this.convertCommentContentToQQHtml(commentContent) },
                             collapse: false,
                             children: { attached: [] }
                         }
                     };
-                    forest.push(presentationNode);
+                    // 修复：将presentation节点附加到最近的父节点而不是直接推入forest
+                    let parentNode = null;
+                    
+                    // 修复：从栈顶开始查找最近的header节点作为父节点，而不是任意节点
+                    for (let j = stack.length - 1; j >= 0; j--) {
+                        const stackItem = stack[j];
+                        if (stackItem.headerLevel > 0) {
+                            parentNode = stackItem.node;
+                            break;
+                        }
+                    }
+                    
+                    // 如果没有找到header节点，使用栈顶节点
+                    if (!parentNode && stack.length > 0) {
+                        parentNode = stack[stack.length - 1].node;
+                    }
+                    
+                    if (parentNode) {
+                        // 如果有父节点，添加为子节点
+                        if (!parentNode.children) parentNode.children = { attached: [] };
+                        if (!parentNode.children.attached) parentNode.children.attached = [];
+                        parentNode.children.attached.push(presentationNode.data);
+                    } else {
+                        // 如果没有父节点，作为顶级节点
+                        forest.push(presentationNode);
+                    }
                     continue;
                 } else {
                     commentContent.push(line);
@@ -520,6 +545,48 @@ class MarkdownToQQConverter {
     createRichTextNode(markdown) {
         this._ensureInitialized(); // 确保依赖已初始化
         return this.richTextFormatter.format(markdown, this.md);
+    }
+
+    /**
+     * 将注释内容转换为QQ思维导图期望的HTML格式
+     * @param {Array} commentLines - 注释行数组
+     * @returns {string} QQ思维导图格式的HTML
+     */
+    convertCommentContentToQQHtml(commentLines) {
+        if (!commentLines || commentLines.length === 0) {
+            return '';
+        }
+
+        const paragraphs = [];
+        let currentParagraphLines = [];
+
+        const flushParagraph = () => {
+            if (currentParagraphLines.length > 0) {
+                // 处理段落内的换行，将多行文本连接，但保留段落内的换行
+                const paragraphContent = currentParagraphLines.join('<br>');
+                paragraphs.push(`<p>${paragraphContent}</p>`);
+                currentParagraphLines = [];
+            }
+        };
+
+        // 处理注释行，正确处理空行
+        for (let i = 0; i < commentLines.length; i++) {
+            const line = commentLines[i];
+            
+            if (line.trim() === '') {
+                // 空行：结束当前段落，添加空段落
+                flushParagraph();
+                paragraphs.push('<p><br></p>');
+            } else {
+                // 非空行：添加到当前段落
+                currentParagraphLines.push(line);
+            }
+        }
+        
+        // 处理最后一个段落
+        flushParagraph();
+
+        return paragraphs.join('\n');
     }
 }
 
